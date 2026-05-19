@@ -161,6 +161,8 @@ Default setup:
     debounce_ms = 80,
     overlay_priority = 10000,
     overlay_fill = true,
+    inline_virtual_text = "overlay",
+    inline_disable_wrap = true,
     inline_viewport_scrolling = true,
     highlight_preset = "tokyonight",
     theme_dir = nil,
@@ -198,6 +200,14 @@ preview_mode~
 inline_mode~
     "replace" hides source text and overlays rendered rows.
     "insert" shows rendered rows above or below the source table.
+
+inline_virtual_text~
+    "overlay" or "win_col" for the replace-mode virtual text strategy.
+    "overlay" is the default and is generally the most portable choice.
+
+inline_disable_wrap~
+    Temporarily sets nowrap in windows showing inline replace mode so long
+    source rows do not soft-wrap underneath the rendered table.
 
 auto_preview~
     Automatically render Markdown tables.
@@ -287,6 +297,10 @@ LIMITATIONS                                *markdown-table-wrap-limitations*
   visual rows, not real buffer rows. Use |:MarkdownTableScrollDown| /
   |:MarkdownTableScrollUp| to page through the inline rendered slice, or use
   |:MarkdownTableFloatPreview| for a normal scrollable preview buffer.
+- Terminal and platform combinations can differ in how wrap, conceal, and
+  virtual text interact. The default |inline_disable_wrap| setting exists to
+  prevent concealed long source rows from leaking through below the rendered
+  table on some Linux terminal setups.
 - Treesitter-aware table discovery is not implemented yet.
 - The plugin focuses on Markdown pipe tables and does not replace general
   Markdown rendering.

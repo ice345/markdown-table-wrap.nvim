@@ -23,16 +23,19 @@ h.test("inline whole-buffer render uses extmarks and conceal options", function(
     vim.bo[buf].filetype = "markdown"
     vim.wo.conceallevel = 0
     vim.wo.concealcursor = ""
+    vim.wo.wrap = true
     plugin.refresh_auto({ force = true })
 
     local marks = vim.api.nvim_buf_get_extmarks(buf, inline.namespace(), 0, -1, { details = true })
     h.assert_true("inline marks", #marks > 0)
     h.assert_eq("conceallevel set", vim.wo.conceallevel, 2)
     h.assert_eq("concealcursor set", vim.wo.concealcursor, "nvc")
+    h.assert_false("wrap disabled while inline replace is active", vim.wo.wrap)
 
     inline.clear(buf)
     h.assert_eq("conceallevel restored", vim.wo.conceallevel, 0)
     h.assert_eq("concealcursor restored", vim.wo.concealcursor, "")
+    h.assert_true("wrap restored", vim.wo.wrap)
   end)
 end)
 
@@ -141,6 +144,56 @@ h.test("inline viewport scroll changes rendered table slice", function()
     h.assert_true("after scroll advances viewport", after ~= before)
     h.assert_true("bottom changes viewport", bottom ~= before)
     h.assert_eq("top restores viewport", top, before)
+
+    inline.clear(buf)
+  end)
+end)
+
+h.test("inline replace can use overlay or fixed window column virtual text", function()
+  local plugin = require("markdown-table-wrap")
+  local inline = require("markdown-table-wrap.inline")
+
+  local function first_virtual_text_mark(buf)
+    local marks = vim.api.nvim_buf_get_extmarks(buf, inline.namespace(), 0, -1, { details = true })
+    for _, mark in ipairs(marks) do
+      if mark[4] and mark[4].virt_text then
+        return mark[4]
+      end
+    end
+    return nil
+  end
+
+  h.with_buffer({
+    "| A | B |",
+    "| --- | --- |",
+    "| 1 | 2 |",
+  }, function(buf)
+    vim.bo[buf].filetype = "markdown"
+
+    plugin.setup({
+      debounce_ms = 0,
+      render_all = true,
+      auto_preview = true,
+      inline_virtual_text = "overlay",
+    })
+    plugin.refresh_auto({ force = true })
+
+    local overlay = first_virtual_text_mark(buf)
+    h.assert_eq("overlay render mode", overlay.virt_text_pos, "overlay")
+    h.assert_eq("overlay avoids fixed win col", overlay.virt_text_win_col, nil)
+
+    inline.clear(buf)
+    plugin.setup({
+      debounce_ms = 0,
+      render_all = true,
+      auto_preview = true,
+      inline_virtual_text = "win_col",
+    })
+    plugin.refresh_auto({ force = true })
+
+    local win_col = first_virtual_text_mark(buf)
+    h.assert_eq("win_col render mode", win_col.virt_text_win_col, 0)
+    h.assert_eq("win_col reports fixed position", win_col.virt_text_pos, "win_col")
 
     inline.clear(buf)
   end)

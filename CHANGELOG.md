@@ -2,6 +2,18 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
+## 0.1.1 - Inline Rendering Compatibility Fixes
+
+### Changed
+
+- Default inline replace rendering now uses `inline_virtual_text = "overlay"` for a more portable extmark rendering path.
+- Inline replace mode now temporarily disables window-local `wrap` by default through `inline_disable_wrap = true`.
+
+### Fixed
+
+- Prevent source Markdown fragments from leaking below inline rendered tables when long concealed rows soft-wrap on some Linux terminal setups.
+- Keep inline table rendering behavior aligned more closely between macOS and Linux in viewport mode.
+
 ## 0.1.0 - Initial Public Release
 
 ### Added

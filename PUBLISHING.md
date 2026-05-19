@@ -110,7 +110,7 @@ Users update it through their plugin manager:
 :Lazy update markdown-table-wrap.nvim
 ```
 
-For future releases:
+For future bug-fix releases:
 
 ```sh
 git tag -a v0.1.1 -m "markdown-table-wrap.nvim v0.1.1"

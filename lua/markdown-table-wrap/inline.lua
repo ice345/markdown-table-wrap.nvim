@@ -5,6 +5,7 @@ local M = {}
 local namespace = vim.api.nvim_create_namespace("markdown-table-wrap")
 local saved_conceallevels = {}
 local saved_concealcursors = {}
+local saved_wraps = {}
 local active_buffers = {}
 local active_tables = {}
 local active_configs = {}
@@ -164,7 +165,7 @@ local function ensure_highlights(config)
   require("markdown-table-wrap.theme").apply(config)
 end
 
-local function set_conceal_window(winid)
+local function set_render_window(winid, config)
   winid = winid or vim.api.nvim_get_current_win()
   if not vim.api.nvim_win_is_valid(winid) then
     return
@@ -182,15 +183,22 @@ local function set_conceal_window(winid)
     saved_concealcursors[winid] = vim.wo[winid].concealcursor
   end
   vim.wo[winid].concealcursor = "nvc"
-end
 
-local function set_conceal_for_buffer(bufnr)
-  for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
-    set_conceal_window(winid)
+  if config.inline_disable_wrap ~= false then
+    if saved_wraps[winid] == nil then
+      saved_wraps[winid] = vim.wo[winid].wrap
+    end
+    vim.wo[winid].wrap = false
   end
 end
 
-local function restore_conceal_window(winid)
+local function set_render_for_buffer(bufnr, config)
+  for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
+    set_render_window(winid, config)
+  end
+end
+
+local function restore_render_window(winid)
   local previous = saved_conceallevels[winid]
   if previous ~= nil and vim.api.nvim_win_is_valid(winid) then
     vim.wo[winid].conceallevel = previous
@@ -202,11 +210,17 @@ local function restore_conceal_window(winid)
     vim.wo[winid].concealcursor = previous_cursor
   end
   saved_concealcursors[winid] = nil
+
+  local previous_wrap = saved_wraps[winid]
+  if previous_wrap ~= nil and vim.api.nvim_win_is_valid(winid) then
+    vim.wo[winid].wrap = previous_wrap
+  end
+  saved_wraps[winid] = nil
 end
 
-local function restore_conceal_for_buffer(bufnr)
+local function restore_render_for_buffer(bufnr)
   for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
-    restore_conceal_window(winid)
+    restore_render_window(winid)
   end
 end
 
@@ -242,7 +256,7 @@ local function view_offset(bufnr, table_info, source_count, rendered_count, conf
 end
 
 local function show_replace(bufnr, table_info, config, rendered)
-  set_conceal_for_buffer(bufnr)
+  set_render_for_buffer(bufnr, config)
 
   local source_count = table_info.end_lnum - table_info.start_lnum + 1
   local rendered_count = #rendered.lines
@@ -261,13 +275,20 @@ local function show_replace(bufnr, table_info, config, rendered)
 
   for source_offset = 0, overlay_count - 1 do
     local line_obj = (rendered.line_objects or rendered.lines)[first_rendered + source_offset + 1]
-    vim.api.nvim_buf_set_extmark(bufnr, namespace, start_row + source_offset, 0, {
+    local mark = {
       virt_text = padded_chunks(line_obj, first_rendered + source_offset + 1, overlay_width),
-      virt_text_win_col = 0,
       hl_mode = "replace",
       right_gravity = false,
       priority = priority,
-    })
+    }
+
+    if config.inline_virtual_text == "win_col" then
+      mark.virt_text_win_col = 0
+    else
+      mark.virt_text_pos = "overlay"
+    end
+
+    vim.api.nvim_buf_set_extmark(bufnr, namespace, start_row + source_offset, 0, mark)
   end
 
   if rendered_count > overlay_count and not config.inline_viewport_scrolling then
@@ -316,7 +337,7 @@ function M.clear(bufnr)
   active_buffers[bufnr] = nil
   active_tables[bufnr] = nil
   active_configs[bufnr] = nil
-  restore_conceal_for_buffer(bufnr)
+  restore_render_for_buffer(bufnr)
 end
 
 function M.reset_view(bufnr)
@@ -442,7 +463,7 @@ end
 function M.attach_window(bufnr)
   bufnr = normalize_bufnr(bufnr)
   if active_buffers[bufnr] then
-    set_conceal_for_buffer(bufnr)
+    set_render_for_buffer(bufnr, active_configs[bufnr] or {})
   end
 end
 

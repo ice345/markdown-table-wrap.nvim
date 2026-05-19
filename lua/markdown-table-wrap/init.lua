@@ -1,6 +1,6 @@
 local M = {}
 
-M.version = "0.1.0"
+M.version = "0.1.1"
 
 local defaults = {
   max_width_ratio = 0.9,
@@ -22,6 +22,8 @@ local defaults = {
   debounce_ms = 80,
   overlay_priority = 10000,
   overlay_fill = true,
+  inline_virtual_text = "overlay",
+  inline_disable_wrap = true,
   inline_viewport_scrolling = true,
   highlight_preset = "tokyonight",
   theme_dir = nil,
@@ -66,8 +68,13 @@ local function validate_config()
   M.config.overlay_priority = math.max(1, tonumber(M.config.overlay_priority) or defaults.overlay_priority)
   M.config.render_all = M.config.render_all ~= false
   M.config.overlay_fill = M.config.overlay_fill ~= false
+  M.config.inline_disable_wrap = M.config.inline_disable_wrap ~= false
   M.config.inline_viewport_scrolling = M.config.inline_viewport_scrolling ~= false
   M.config.map_gx = M.config.map_gx ~= false
+
+  if M.config.inline_virtual_text ~= "overlay" and M.config.inline_virtual_text ~= "win_col" then
+    M.config.inline_virtual_text = defaults.inline_virtual_text
+  end
 
   if M.config.preview_mode ~= "inline" and M.config.preview_mode ~= "float" then
     M.config.preview_mode = defaults.preview_mode
@@ -120,6 +127,8 @@ local function table_signature(bufnr, table_info)
     tostring(M.config.table_border),
     tostring(M.config.row_separator),
     tostring(M.config.inline_mode),
+    tostring(M.config.inline_virtual_text),
+    tostring(M.config.inline_disable_wrap),
     tostring(M.config.inline_viewport_scrolling),
     table.concat(lines, "\n"),
   }, "\31")
@@ -136,6 +145,8 @@ local function all_tables_signature(bufnr, tables)
     tostring(M.config.table_border),
     tostring(M.config.row_separator),
     tostring(M.config.inline_mode),
+    tostring(M.config.inline_virtual_text),
+    tostring(M.config.inline_disable_wrap),
     tostring(M.config.overlay_fill),
     tostring(M.config.inline_viewport_scrolling),
   }

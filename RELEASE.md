@@ -1,6 +1,6 @@
 # Release Checklist
 
-Target version: `v0.1.0`
+Target version: `v0.1.1`
 
 Use this before tagging a public release.
 
@@ -62,7 +62,7 @@ Use this before tagging a public release.
 
 ## Verified In This Workspace
 
-- [x] Headless test suite: `PASS 26 tests`.
+- [x] Headless test suite: `PASS 32 tests`.
 - [x] Help tags generated for `doc/markdown-table-wrap.txt`.
 - [x] `:help markdown-table-wrap` opens in headless Neovim.
 - [x] `:checkhealth markdown-table-wrap` completes in headless Neovim.
@@ -83,6 +83,21 @@ Use this before tagging a public release.
 - `05-render-markdown-coexistence.png`: A Markdown document where headings/lists/code are rendered by `render-markdown.nvim`, while the table is rendered by this plugin.
 
 ## Release Notes Draft
+
+### markdown-table-wrap.nvim v0.1.1
+
+Inline rendering compatibility release focused on stabilizing replace-mode rendering across macOS and Linux terminal setups.
+
+Highlights:
+
+- Default replace-mode rendering now uses Neovim's `overlay` virtual text path.
+- Inline replace mode temporarily disables window-local `wrap` so concealed long Markdown rows do not leak through below the rendered table.
+- Cross-platform behavior is more consistent for inline viewport rendering of long tables.
+
+Known limitations:
+
+- Extra wrapped rows still use `virt_lines`, so they are visual rows rather than real cursor-addressable buffer lines.
+- The plugin remains table-focused and does not replace general Markdown rendering.
 
 ### markdown-table-wrap.nvim v0.1.0
 
