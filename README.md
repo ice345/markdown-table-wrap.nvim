@@ -91,6 +91,8 @@ return {
       overlay_fill = true,
       inline_viewport_scrolling = true,
       highlight_preset = "tokyonight",
+      fill_background = true,
+      table_background = nil,
       theme_dir = nil,
       themes = {},
       highlights = {},
@@ -211,6 +213,8 @@ require("markdown-table-wrap").setup({
   overlay_fill = true,
   inline_viewport_scrolling = true,
   highlight_preset = "tokyonight",
+  fill_background = true,
+  table_background = nil,
   theme_dir = nil,
   themes = {},
   highlights = {},
@@ -252,6 +256,8 @@ Options:
 - `overlay_fill`: fill the rest of each rendered source line with blank overlay text so long source rows do not leak past the rendered table.
 - `inline_viewport_scrolling`: let `:MarkdownTableScrollDown` and `:MarkdownTableScrollUp` page through rendered rows inside the original table height. Disable it to show the complete rendered table inline with extra virtual lines.
 - `highlight_preset`: `"tokyonight"`, `"catppuccin"`, `"default"`, `"render_markdown"`, or `"auto"`.
+- `fill_background`: paint a solid background behind rendered table chunks. Keep this enabled for transparent terminals or compositors.
+- `table_background`: optional explicit background color such as `"#1a1b26"` for the rendered table.
 - `theme_dir`: optional directory containing custom theme files named `<preset>.lua`.
 - `themes`: inline custom theme table keyed by preset name.
 - `highlights`: override highlight specs by semantic key.
@@ -425,6 +431,8 @@ The default mode hides the source table text with extmark conceal and overlays r
 With `inline_viewport_scrolling = true`, long rendered tables are shown as a scrollable visual slice inside the original source table height. Use `:MarkdownTableScrollDown` / `:MarkdownTableScrollUp` for inline reading, or `:MarkdownTableFloatPreview` for a fully scrollable preview buffer.
 
 Use `:MarkdownTableToggleInlineViewport` when you prefer the full inline expansion. In viewport mode, `:MarkdownTableScrollDown` and `:MarkdownTableScrollUp` page through the rendered table slice. In full inline mode, those commands fall back to normal window scrolling because the full rendered table is already visible as virtual lines.
+
+On Linux terminals with transparency or compositor blur, enable `fill_background` and optionally set `table_background` to match your colorscheme. This prevents wallpaper or blurred content from showing through the spaces inside rendered cells, which can look like broken table borders even when the Unicode border glyphs themselves are correct.
 
 ## Roadmap: More Exact Inline Rendering
 

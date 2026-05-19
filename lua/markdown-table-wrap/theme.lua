@@ -1,5 +1,10 @@
 local M = {}
 
+local preset_backgrounds = {
+  tokyonight = "#1a1b26",
+  catppuccin = "#1e1e2e",
+}
+
 local presets = {
   tokyonight = {
     border = { fg = "#3d59a1" },
@@ -104,6 +109,42 @@ local function normalize_spec(spec)
   return spec
 end
 
+local function resolve_background(config, preset_name)
+  if config.fill_background == false then
+    return nil
+  end
+
+  if config.table_background and config.table_background ~= "" then
+    return config.table_background
+  end
+
+  if preset_backgrounds[preset_name] then
+    return preset_backgrounds[preset_name]
+  end
+
+  local normal = vim.api.nvim_get_hl(0, { name = "Normal", link = false })
+  if normal and normal.bg then
+    return string.format("#%06x", normal.bg)
+  end
+
+  local normal_float = vim.api.nvim_get_hl(0, { name = "NormalFloat", link = false })
+  if normal_float and normal_float.bg then
+    return string.format("#%06x", normal_float.bg)
+  end
+
+  return nil
+end
+
+local function with_background(spec, background)
+  if not background or spec.bg ~= nil then
+    return spec
+  end
+
+  local copy = vim.deepcopy(spec)
+  copy.bg = background
+  return copy
+end
+
 local function load_theme_file(config, preset_name)
   local theme_dir = config.theme_dir
   if not theme_dir or preset_name == "auto" then
@@ -133,9 +174,13 @@ function M.apply(config)
   local custom_theme = (config.themes or {})[preset_name] or load_theme_file(config, preset_name)
   local preset = vim.deepcopy(custom_theme or presets[preset_name] or presets.tokyonight)
   local overrides = config.highlights or {}
+  local background = resolve_background(config, preset_name)
 
   for key, group in pairs(groups) do
     local spec = vim.tbl_deep_extend("force", preset[key] or {}, overrides[key] or {})
+    if key ~= "source" then
+      spec = with_background(spec, background)
+    end
     vim.api.nvim_set_hl(0, group, normalize_spec(spec))
   end
 end

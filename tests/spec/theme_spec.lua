@@ -11,6 +11,8 @@ h.test("theme presets and overrides", function()
 
   local code = vim.api.nvim_get_hl(0, { name = "MarkdownTableWrapCode" })
   h.assert_eq("theme override code fg", code.fg, tonumber("ffffff", 16))
+  local inline = vim.api.nvim_get_hl(0, { name = "MarkdownTableWrapInline" })
+  h.assert_eq("tokyonight inline bg", inline.bg, tonumber("1a1b26", 16))
 
   local presets = {}
   for _, preset in ipairs(theme.presets()) do
@@ -78,4 +80,12 @@ h.test("theme presets and overrides", function()
   theme.apply({ highlight_preset = "file_theme", theme_dir = theme_dir })
   local image = vim.api.nvim_get_hl(0, { name = "MarkdownTableWrapImage" })
   h.assert_eq("theme loaded from directory", image.fg, tonumber("0c0c0c", 16))
+
+  theme.apply({
+    highlight_preset = "tokyonight",
+    fill_background = true,
+    table_background = "#101010",
+  })
+  local border = vim.api.nvim_get_hl(0, { name = "MarkdownTableWrapBorder" })
+  h.assert_eq("custom table background", border.bg, tonumber("101010", 16))
 end)

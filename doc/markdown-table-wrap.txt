@@ -163,6 +163,8 @@ Default setup:
     overlay_fill = true,
     inline_viewport_scrolling = true,
     highlight_preset = "tokyonight",
+    fill_background = true,
+    table_background = nil,
     theme_dir = nil,
     themes = {},
     highlights = {},
@@ -207,6 +209,14 @@ render_all~
 
 highlight_preset~
     "tokyonight", "catppuccin", "default", "render_markdown", or "auto".
+
+fill_background~
+    Paint a solid background behind rendered table chunks. Keep this enabled
+    for transparent terminals or compositor blur.
+
+table_background~
+    Optional explicit background color such as "#1a1b26" for the rendered
+    table surface.
 
 theme_dir~
     Optional directory containing custom theme files named <preset>.lua.
@@ -290,6 +300,9 @@ LIMITATIONS                                *markdown-table-wrap-limitations*
 - Treesitter-aware table discovery is not implemented yet.
 - The plugin focuses on Markdown pipe tables and does not replace general
   Markdown rendering.
+- On transparent terminals, a solid table background may be necessary to avoid
+  wallpaper or blur showing through spaces inside rendered cells. Use
+  fill_background and table_background when needed.
 
 ==============================================================================
 vim:tw=78:ts=8:ft=help:norl:
