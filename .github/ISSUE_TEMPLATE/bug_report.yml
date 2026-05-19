@@ -1,0 +1,43 @@
+name: Bug report
+description: Report incorrect rendering, parsing, or editor behavior.
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the incorrect behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: markdown
+    attributes:
+      label: Minimal Markdown table
+      description: Paste the smallest table that reproduces the issue.
+      render: markdown
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Plugin configuration
+      description: Paste your markdown-table-wrap.nvim and render-markdown.nvim related config.
+      render: lua
+    validations:
+      required: false
+  - type: input
+    id: nvim
+    attributes:
+      label: Neovim version
+      placeholder: "nvim --version"
+    validations:
+      required: true
+  - type: input
+    id: theme
+    attributes:
+      label: Colorscheme
+      placeholder: "tokyonight, catppuccin, ..."
+    validations:
+      required: false
+

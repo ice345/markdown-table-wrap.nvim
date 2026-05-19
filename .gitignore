@@ -1,0 +1,13 @@
+nvim.log
+*.log
+.DS_Store
+*.swp
+*.swo
+*.tmp
+.luarc.json
+.lazy.lua
+.cache/
+tmp/
+dist/
+coverage/
+RELEASE.md

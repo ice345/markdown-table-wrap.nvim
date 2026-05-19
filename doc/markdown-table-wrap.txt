@@ -1,0 +1,295 @@
+*markdown-table-wrap.txt*  Wrapped Markdown pipe table rendering for Neovim
+
+==============================================================================
+CONTENTS                                      *markdown-table-wrap-contents*
+
+1. Overview                         |markdown-table-wrap-overview|
+2. Installation                     |markdown-table-wrap-installation|
+3. Commands                         |markdown-table-wrap-commands|
+4. Configuration                    |markdown-table-wrap-configuration|
+5. Highlights                       |markdown-table-wrap-highlights|
+6. render-markdown.nvim             |markdown-table-wrap-render-markdown|
+7. Limitations                      |markdown-table-wrap-limitations|
+
+==============================================================================
+OVERVIEW                                      *markdown-table-wrap-overview*
+
+markdown-table-wrap.nvim renders Markdown pipe tables with wrapped cell content.
+It does not modify the source Markdown buffer. The default display mode hides
+the source table with extmark conceal and overlays a rendered Unicode table in
+place. A floating preview is also available.
+
+The plugin is designed to coexist with render-markdown.nvim by letting
+render-markdown.nvim handle non-table Markdown while markdown-table-wrap.nvim
+owns pipe table rendering.
+
+Requirements:
+
+- Neovim 0.10+
+- No external binary dependencies
+
+==============================================================================
+INSTALLATION                                  *markdown-table-wrap-installation*
+
+Example lazy.nvim / LazyVim spec:
+>
+  return {
+    {
+      "your-name/markdown-table-wrap.nvim",
+      ft = "markdown",
+      opts = {},
+    },
+  }
+<
+
+For local development:
+>
+  return {
+    {
+      dir = "~/Code/lazyvim-table/markdown-table-wrap.nvim",
+      ft = "markdown",
+      opts = {},
+    },
+  }
+<
+
+==============================================================================
+COMMANDS                                      *markdown-table-wrap-commands*
+
+                                                        *:MarkdownTablePreview*
+:MarkdownTablePreview
+    Open the configured preview mode. Defaults to inline replacement.
+
+                                                  *:MarkdownTableInlinePreview*
+:MarkdownTableInlinePreview
+    Render the table under the cursor inline.
+
+                                                   *:MarkdownTableFloatPreview*
+:MarkdownTableFloatPreview
+    Render the table under the cursor in a floating window.
+
+                                                  *:MarkdownTableTogglePreview*
+:MarkdownTableTogglePreview
+    Toggle the active preview.
+
+                                                   *:MarkdownTableClosePreview*
+:MarkdownTableClosePreview
+    Close the preview and clear inline rendering.
+
+                                                        *:MarkdownTableRefresh*
+:MarkdownTableRefresh
+    Force refresh Markdown table rendering in the current buffer.
+
+                                             *:MarkdownTableEnableAutoPreview*
+:MarkdownTableEnableAutoPreview
+    Enable automatic table rendering in the current buffer.
+
+                                            *:MarkdownTableDisableAutoPreview*
+:MarkdownTableDisableAutoPreview
+    Disable automatic table rendering in the current buffer.
+
+                                             *:MarkdownTableToggleAutoPreview*
+:MarkdownTableToggleAutoPreview
+    Toggle automatic table rendering in the current buffer.
+
+                                                       *:MarkdownTableStatus*
+:MarkdownTableStatus
+    Show the current rendering state.
+
+                                           *:MarkdownTableToggleInlineViewport*
+:MarkdownTableToggleInlineViewport
+    Toggle between viewport-sliced inline rendering and full inline rendering.
+
+                                                       *:MarkdownTableNextCell*
+:MarkdownTableNextCell
+    Move to the next source table cell.
+
+                                                       *:MarkdownTablePrevCell*
+:MarkdownTablePrevCell
+    Move to the previous source table cell.
+
+                                                        *:MarkdownTableNextRow*
+:MarkdownTableNextRow
+    Move to the same source table cell in the next row.
+
+                                                       *:MarkdownTablePrevRow*
+:MarkdownTablePrevRow
+    Move to the same source table cell in the previous row.
+
+                                                      *:MarkdownTableOpenLink*
+:MarkdownTableOpenLink
+    Open the first link in the current source table cell.
+
+                                                     *:MarkdownTableScrollDown*
+:MarkdownTableScrollDown
+    Scroll the rendered table view down.
+
+                                                       *:MarkdownTableScrollUp*
+:MarkdownTableScrollUp
+    Scroll the rendered table view up.
+
+                                                      *:MarkdownTableScrollTop*
+:MarkdownTableScrollTop
+    Jump the rendered table viewport to the top.
+
+                                                   *:MarkdownTableScrollBottom*
+:MarkdownTableScrollBottom
+    Jump the rendered table viewport to the bottom.
+
+==============================================================================
+CONFIGURATION                              *markdown-table-wrap-configuration*
+
+Default setup:
+>
+  require("markdown-table-wrap").setup({
+    max_width_ratio = 0.9,
+    min_col_width = 8,
+    max_col_width = 50,
+    border = "rounded",
+    use_unicode_border = true,
+    table_border = "rounded",
+    row_separator = true,
+    preview_mode = "inline",
+    inline_mode = "replace",
+    inline_position = "above",
+    dim_source = true,
+    auto_preview = true,
+    render_all = true,
+    auto_preview_in_insert = false,
+    clear_on_cursor_leave = true,
+    clear_on_insert = true,
+    debounce_ms = 80,
+    overlay_priority = 10000,
+    overlay_fill = true,
+    inline_viewport_scrolling = true,
+    highlight_preset = "tokyonight",
+    theme_dir = nil,
+    themes = {},
+    highlights = {},
+    link = {
+      wiki = { icon = " ", highlight = "MarkdownTableWrapWikiLink", scope_highlight = "MarkdownTableWrapWikiLink" },
+      image = " ",
+      custom = {
+        github = { pattern = "github", icon = " " },
+        gitlab = { pattern = "gitlab", icon = "󰮠 " },
+        youtube = { pattern = "youtube", icon = " " },
+        bilibili = { pattern = "bilibili", icon = "󰟴 " },
+        cern = { pattern = "cern.ch", icon = " " },
+      },
+    },
+    map_gx = true,
+  })
+<
+
+Important options:
+
+max_width_ratio~
+    Maximum rendered table width as a ratio of the current window width.
+
+min_col_width~
+    Minimum display width for a column.
+
+max_col_width~
+    Maximum natural display width before wrapping.
+
+preview_mode~
+    "inline" or "float".
+
+inline_mode~
+    "replace" hides source text and overlays rendered rows.
+    "insert" shows rendered rows above or below the source table.
+
+auto_preview~
+    Automatically render Markdown tables.
+
+render_all~
+    Render all tables in the current Markdown buffer.
+
+highlight_preset~
+    "tokyonight", "catppuccin", "default", "render_markdown", or "auto".
+
+theme_dir~
+    Optional directory containing custom theme files named <preset>.lua.
+
+themes~
+    Inline custom theme table keyed by preset name.
+
+inline_viewport_scrolling~
+    When enabled, |:MarkdownTableScrollDown| and |:MarkdownTableScrollUp|
+    page through rendered rows inside the original table height. This avoids
+    jumping past visual-only wrapped rows in long inline tables.
+
+    When disabled, the complete rendered table is shown inline with extra
+    virtual lines. In that mode, scroll commands fall back to normal window
+    scrolling because the table is already expanded visually.
+
+link~
+    Icon configuration for links, wiki links, images, and URL pattern matches.
+    Standard Markdown links use [text](url). The plugin also accepts
+    (text)[url] as a convenience form inside table cells.
+
+map_gx~
+    Map gx in Markdown buffers to |:MarkdownTableOpenLink| with fallback to
+    native gx. This avoids opening the concealed source word under rendered
+    virtual text, such as trying to open "Details" instead of the source URL.
+
+==============================================================================
+HIGHLIGHTS                                  *markdown-table-wrap-highlights*
+
+Highlight groups:
+
+- MarkdownTableWrapBorder
+- MarkdownTableWrapHeader
+- MarkdownTableWrapInline
+- MarkdownTableWrapSource
+- MarkdownTableWrapCode
+- MarkdownTableWrapBold
+- MarkdownTableWrapItalic
+- MarkdownTableWrapStrike
+- MarkdownTableWrapLink
+- MarkdownTableWrapWikiLink
+- MarkdownTableWrapImage
+- MarkdownTableWrapMark
+- MarkdownTableWrapBlank
+
+Override by semantic key:
+>
+  require("markdown-table-wrap").setup({
+    highlights = {
+      code = { fg = "#9ece6a" },
+      bold = { fg = "#e0af68", bold = true },
+      link = { fg = "#7dcfff", underline = true },
+      mark = { fg = "#1a1b26", bg = "#e0af68" },
+    },
+  })
+<
+
+==============================================================================
+RENDER-MARKDOWN.NVIM                    *markdown-table-wrap-render-markdown*
+
+To avoid double table rendering, disable render-markdown.nvim pipe tables:
+>
+  return {
+    "MeanderingProgrammer/render-markdown.nvim",
+    opts = {
+      pipe_table = {
+        enabled = false,
+      },
+    },
+  }
+<
+
+==============================================================================
+LIMITATIONS                                *markdown-table-wrap-limitations*
+
+- Extra wrapped rows use virt_lines. They are visual lines, not real buffer
+- Inline replacement uses virtual text and optional virtual lines. These are
+  visual rows, not real buffer rows. Use |:MarkdownTableScrollDown| /
+  |:MarkdownTableScrollUp| to page through the inline rendered slice, or use
+  |:MarkdownTableFloatPreview| for a normal scrollable preview buffer.
+- Treesitter-aware table discovery is not implemented yet.
+- The plugin focuses on Markdown pipe tables and does not replace general
+  Markdown rendering.
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:
