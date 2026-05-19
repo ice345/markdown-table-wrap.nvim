@@ -20,7 +20,8 @@ end)
 
 h.test("markdown parses link variants and icons", function()
   local markdown = require("markdown-table-wrap.markdown")
-  local parsed = markdown.parse_inline("[youtube](https://www.youtube.com) (bili)[https://bilibili.com] [[Wiki]] ![alt](image.png)")
+  local parsed =
+    markdown.parse_inline("[youtube](https://www.youtube.com) (bili)[https://bilibili.com] [[Wiki]] ![alt](image.png)")
 
   local kinds = {}
   local link_urls = {}
@@ -53,7 +54,8 @@ h.test("markdown parses link variants and icons", function()
   h.assert_true("wiki icon", with_icons.text:find("W Wiki", 1, true) ~= nil)
   h.assert_true("image icon", with_icons.text:find("I alt", 1, true) ~= nil)
 
-  local extracted = markdown.extract_links("[YouTube](https://youtube.com) (Bili)[https://bilibili.com] ![Alt](image.png)")
+  local extracted =
+    markdown.extract_links("[YouTube](https://youtube.com) (Bili)[https://bilibili.com] ![Alt](image.png)")
   h.assert_eq("extract link count", #extracted, 3)
   h.assert_eq("extract first url", extracted[1].url, "https://youtube.com")
   h.assert_eq("extract reversed url", extracted[2].url, "https://bilibili.com")

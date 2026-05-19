@@ -127,7 +127,7 @@ return {
 }
 ```
 
-If you publish it to GitHub, switch `dir` to your repository name:
+If you publish it to GitHub or want to install it from any Neovim distribution, switch `dir` to your repository name:
 
 ```lua
 return {

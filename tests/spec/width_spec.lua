@@ -14,4 +14,3 @@ h.test("width padding respects display width", function()
   h.assert_eq("left padding", vim.api.nvim_strwidth(width.pad("中文", 6, "right")), 6)
   h.assert_eq("center padding", vim.api.nvim_strwidth(width.pad("中文", 7, "center")), 7)
 end)
-

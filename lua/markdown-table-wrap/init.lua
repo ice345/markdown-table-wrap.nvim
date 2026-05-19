@@ -415,15 +415,18 @@ local function create_autocmds()
     end,
   })
 
-  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "InsertLeave", "BufWinEnter", "WinScrolled", "VimResized" }, {
-    group = M.state.augroup,
-    callback = function()
-      if not is_markdown_buffer() then
-        return
-      end
-      M.schedule_refresh({ silent = true })
-    end,
-  })
+  vim.api.nvim_create_autocmd(
+    { "TextChanged", "TextChangedI", "InsertLeave", "BufWinEnter", "WinScrolled", "VimResized" },
+    {
+      group = M.state.augroup,
+      callback = function()
+        if not is_markdown_buffer() then
+          return
+        end
+        M.schedule_refresh({ silent = true })
+      end,
+    }
+  )
 
   vim.api.nvim_create_autocmd("InsertEnter", {
     group = M.state.augroup,

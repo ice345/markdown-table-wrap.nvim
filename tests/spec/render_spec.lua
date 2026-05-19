@@ -69,7 +69,11 @@ h.test("render output golden snapshot", function()
       row_separator = true,
     })
 
-    h.assert_eq("golden top", rendered.lines[1], "╭──────┬──────────────────╮")
+    h.assert_eq(
+      "golden top",
+      rendered.lines[1],
+      "╭──────┬──────────────────╮"
+    )
     h.assert_eq("golden header", rendered.lines[2], "│ 名称 │ 说明             │")
     h.assert_true("golden has bottom", rendered.lines[#rendered.lines]:match("^╰") ~= nil)
   end)
