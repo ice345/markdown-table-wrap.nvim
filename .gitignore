@@ -10,3 +10,4 @@ nvim.log
 tmp/
 dist/
 coverage/
+RELEASE.local.md

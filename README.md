@@ -476,7 +476,6 @@ markdown-table-wrap.nvim/
 ├── PUBLISHING.md
 ├── README.md
 ├── ROADMAP.md
-├── RELEASE.md
 ├── LICENSE
 ├── doc/
 │   ├── markdown-table-wrap.txt

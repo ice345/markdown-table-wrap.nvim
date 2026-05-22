@@ -61,7 +61,7 @@ Tag: v0.1.0
 Title: markdown-table-wrap.nvim v0.1.0
 ```
 
-Paste the release notes from `RELEASE.md`.
+Paste the release notes draft from the end of this file.
 
 Recommended release assets/screenshots:
 
@@ -118,3 +118,41 @@ git push origin v0.1.2
 ```
 
 Then draft a new GitHub release from that tag.
+
+## 7. Release Checklist
+
+Use this before tagging a public release.
+
+- Run the headless test suite from the repository root.
+- Run `:checkhealth markdown-table-wrap` in a real Neovim session.
+- Verify the README install snippet with your current plugin manager setup.
+- Verify coexistence with `render-markdown.nvim` and `pipe_table.enabled = false`.
+- Verify inline rendering in Normal mode.
+- Verify inline viewport scrolling with `:MarkdownTableScrollDown` and `:MarkdownTableScrollUp`.
+- Verify inline viewport/full toggle with `:MarkdownTableToggleInlineViewport`.
+- Verify viewport top/bottom jumps with `:MarkdownTableScrollTop` and `:MarkdownTableScrollBottom`.
+- Verify link icons and `==highlight==` rendering.
+- Verify `gx` / `:MarkdownTableOpenLink` opens the source table cell URL.
+- Verify source reveal in Insert mode.
+- Verify floating preview.
+- Verify a wide mixed Chinese/English table.
+- Verify parser boundaries: escaped pipe, pipe inside inline code, double-backtick code span, invalid delimiter row rejection, and adjacent pipe-like prose not being concealed.
+- Verify inline token styles: code, bold, italic, strikethrough, and link.
+
+## 8. Release Notes Draft
+
+### markdown-table-wrap.nvim v0.1.2
+
+This release focuses on setup behavior and first-run usability.
+
+Highlights:
+
+- Fixes a setup lifecycle issue where manual `require("markdown-table-wrap").setup({...})` calls could be overridden later when `plugin/markdown-table-wrap.lua` was sourced, which affected package manager setups such as `vim.pack`.
+- Changes the default `highlight_preset` to `default`, so the plugin follows standard Neovim highlight groups and fits arbitrary colorschemes more naturally out of the box.
+- Changes the default `inline_viewport_scrolling` to `false`, so the full rendered table is visible inline on first use instead of appearing partially rendered.
+- Improves the README and help text to explain viewport mode much earlier and more explicitly.
+
+Known limitations:
+
+- Extra wrapped rows still use `virt_lines`, so they are visual rows rather than real cursor-addressable buffer lines.
+- The plugin remains focused on Markdown pipe tables and does not replace general Markdown rendering.
