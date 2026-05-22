@@ -18,7 +18,9 @@ Inline rendering in a Tokyo Night themed Markdown buffer:
 
 Viewport scrolling for rendered tables taller than their source table:
 
-![Inline viewport scrolling](docs/02-inline-scroll.gif)
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/5bb6da3d-04f0-4608-8672-f6edfb10f2c4" width="100%"></video>
+</div>
 
 Full inline expansion when viewport mode is disabled:
 
