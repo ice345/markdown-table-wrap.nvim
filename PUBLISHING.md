@@ -113,8 +113,8 @@ Users update it through their plugin manager:
 For future bug-fix releases:
 
 ```sh
-git tag -a v0.1.1 -m "markdown-table-wrap.nvim v0.1.1"
-git push origin v0.1.1
+git tag -a v0.1.2 -m "markdown-table-wrap.nvim v0.1.2"
+git push origin v0.1.2
 ```
 
 Then draft a new GitHub release from that tag.

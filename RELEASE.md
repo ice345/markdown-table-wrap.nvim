@@ -1,6 +1,6 @@
 # Release Checklist
 
-Target version: `v0.1.1`
+Target version: `v0.1.2`
 
 Use this before tagging a public release.
 

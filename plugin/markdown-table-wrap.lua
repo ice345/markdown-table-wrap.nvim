@@ -4,4 +4,8 @@ end
 
 vim.g.loaded_markdown_table_wrap = 1
 
-require("markdown-table-wrap").setup()
+local plugin = require("markdown-table-wrap")
+
+if not plugin.state.did_setup then
+  plugin.setup()
+end

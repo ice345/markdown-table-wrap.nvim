@@ -2,6 +2,18 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
+## 0.1.2 - Setup And Defaults Cleanup
+
+### Fixed
+
+- Avoid overriding user configuration when `setup()` is called manually before `plugin/markdown-table-wrap.lua` is sourced, which affects package managers such as `vim.pack`.
+
+### Changed
+
+- `inline_viewport_scrolling` now defaults to `false` so the full rendered table is visible inline on first use.
+- `highlight_preset` now defaults to `default`, which links into standard Neovim highlight groups and fits arbitrary colorschemes more naturally.
+- Documentation now explains inline viewport behavior near the top of the help text instead of only through commands and options.
+
 ## 0.1.1 - Inline Rendering Compatibility Fixes
 
 ### Changed

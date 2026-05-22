@@ -55,3 +55,25 @@ h.test("system render chain only conceals detected table range", function()
     inline.clear(buf)
   end)
 end)
+
+h.test("plugin loader does not override manual setup", function()
+  local plugin = require("markdown-table-wrap")
+  local plugin_file = vim.fn.fnamemodify("plugin/markdown-table-wrap.lua", ":p")
+
+  vim.g.loaded_markdown_table_wrap = nil
+  plugin.state.did_setup = false
+
+  plugin.setup({
+    table_border = "single",
+    row_separator = false,
+    highlight_preset = "default",
+    inline_viewport_scrolling = false,
+  })
+
+  dofile(plugin_file)
+
+  h.assert_eq("manual table_border preserved", plugin.config.table_border, "single")
+  h.assert_false("manual row_separator preserved", plugin.config.row_separator)
+  h.assert_eq("manual highlight_preset preserved", plugin.config.highlight_preset, "default")
+  h.assert_false("manual viewport preference preserved", plugin.config.inline_viewport_scrolling)
+end)

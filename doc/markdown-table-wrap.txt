@@ -19,6 +19,15 @@ It does not modify the source Markdown buffer. The default display mode hides
 the source table with extmark conceal and overlays a rendered Unicode table in
 place. A floating preview is also available.
 
+By default, inline rendering shows the complete rendered table, even when
+wrapped cells make it taller than the source table. This avoids the common
+first impression that the plugin is only rendering part of the table.
+
+If you enable |inline_viewport_scrolling|, the plugin instead keeps inline
+rendering inside the original source table height and lets you move through the
+rendered slice with |:MarkdownTableScrollDown|, |:MarkdownTableScrollUp|,
+|:MarkdownTableScrollTop|, and |:MarkdownTableScrollBottom|.
+
 The plugin is designed to coexist with render-markdown.nvim by letting
 render-markdown.nvim handle non-table Markdown while markdown-table-wrap.nvim
 owns pipe table rendering.
@@ -163,8 +172,8 @@ Default setup:
     overlay_fill = true,
     inline_virtual_text = "overlay",
     inline_disable_wrap = true,
-    inline_viewport_scrolling = true,
-    highlight_preset = "tokyonight",
+    inline_viewport_scrolling = false,
+    highlight_preset = "default",
     theme_dir = nil,
     themes = {},
     highlights = {},
@@ -216,7 +225,9 @@ render_all~
     Render all tables in the current Markdown buffer.
 
 highlight_preset~
-    "tokyonight", "catppuccin", "default", "render_markdown", or "auto".
+    "default", "tokyonight", "catppuccin", "render_markdown", or "auto".
+    The default preset links to standard Neovim highlight groups so it works
+    naturally with arbitrary colorschemes.
 
 theme_dir~
     Optional directory containing custom theme files named <preset>.lua.
@@ -226,12 +237,12 @@ themes~
 
 inline_viewport_scrolling~
     When enabled, |:MarkdownTableScrollDown| and |:MarkdownTableScrollUp|
-    page through rendered rows inside the original table height. This avoids
-    jumping past visual-only wrapped rows in long inline tables.
+    page through rendered rows inside the original table height.
 
     When disabled, the complete rendered table is shown inline with extra
-    virtual lines. In that mode, scroll commands fall back to normal window
-    scrolling because the table is already expanded visually.
+    virtual lines. This is the default because it is less surprising on first
+    use. In that mode, scroll commands fall back to normal window scrolling
+    because the table is already expanded visually.
 
 link~
     Icon configuration for links, wiki links, images, and URL pattern matches.

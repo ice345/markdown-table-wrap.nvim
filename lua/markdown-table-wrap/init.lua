@@ -1,6 +1,6 @@
 local M = {}
 
-M.version = "0.1.1"
+M.version = "0.1.2"
 
 local defaults = {
   max_width_ratio = 0.9,
@@ -24,8 +24,8 @@ local defaults = {
   overlay_fill = true,
   inline_virtual_text = "overlay",
   inline_disable_wrap = true,
-  inline_viewport_scrolling = true,
-  highlight_preset = "tokyonight",
+  inline_viewport_scrolling = false,
+  highlight_preset = "default",
   theme_dir = nil,
   themes = {},
   highlights = {},
@@ -53,6 +53,7 @@ M.state = {
   refresh_token = 0,
   paused_buffers = {},
   last_signature = {},
+  did_setup = false,
 }
 
 local function is_markdown_buffer()
@@ -511,6 +512,7 @@ function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts or {})
   validate_config()
   create_autocmds()
+  M.state.did_setup = true
 
   vim.api.nvim_create_user_command("MarkdownTablePreview", function()
     M.preview()

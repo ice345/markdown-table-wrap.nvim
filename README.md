@@ -30,7 +30,7 @@ Floating preview for long table reading:
 
 ## Features
 
-- Version: `0.1.1`.
+- Version: `0.1.2`.
 - Automatic Markdown-only rendering; commands are optional controls.
 - Detects the pipe table under the cursor.
 - Parses header, separator, alignment, and body rows.
@@ -91,8 +91,8 @@ return {
       overlay_fill = true,
       inline_virtual_text = "overlay",
       inline_disable_wrap = true,
-      inline_viewport_scrolling = true,
-      highlight_preset = "tokyonight",
+      inline_viewport_scrolling = false,
+      highlight_preset = "default",
       theme_dir = nil,
       themes = {},
       highlights = {},
@@ -141,6 +141,20 @@ return {
 ```
 
 See [PUBLISHING.md](PUBLISHING.md) for the release flow.
+
+## Default Behavior
+
+The default inline mode now renders the complete table inline and keeps viewport slicing off. This is the least surprising mode for first-time users because every wrapped row is visible immediately.
+
+If you prefer to keep inline rendering within the original source table height, enable:
+
+```lua
+require("markdown-table-wrap").setup({
+  inline_viewport_scrolling = true,
+})
+```
+
+Then use `:MarkdownTableScrollDown`, `:MarkdownTableScrollUp`, `:MarkdownTableScrollTop`, and `:MarkdownTableScrollBottom` to move through the rendered slice.
 
 ### Coexisting With render-markdown.nvim
 
@@ -212,8 +226,8 @@ require("markdown-table-wrap").setup({
   overlay_fill = true,
   inline_virtual_text = "overlay",
   inline_disable_wrap = true,
-  inline_viewport_scrolling = true,
-  highlight_preset = "tokyonight",
+  inline_viewport_scrolling = false,
+  highlight_preset = "default",
   theme_dir = nil,
   themes = {},
   highlights = {},
@@ -255,8 +269,8 @@ Options:
 - `overlay_fill`: fill the rest of each rendered source line with blank overlay text so long source rows do not leak past the rendered table.
 - `inline_virtual_text`: `"overlay"` or `"win_col"` for the replace-mode virtual text strategy. The default `"overlay"` is the more portable path.
 - `inline_disable_wrap`: temporarily set `nowrap` in windows showing inline replace mode so long source rows do not soft-wrap underneath the rendered table.
-- `inline_viewport_scrolling`: let `:MarkdownTableScrollDown` and `:MarkdownTableScrollUp` page through rendered rows inside the original table height. Disable it to show the complete rendered table inline with extra virtual lines.
-- `highlight_preset`: `"tokyonight"`, `"catppuccin"`, `"default"`, `"render_markdown"`, or `"auto"`.
+- `inline_viewport_scrolling`: when `true`, `:MarkdownTableScrollDown` and `:MarkdownTableScrollUp` page through rendered rows inside the original table height. The default is `false`, which shows the complete rendered table inline with extra virtual lines.
+- `highlight_preset`: `"default"`, `"tokyonight"`, `"catppuccin"`, `"render_markdown"`, or `"auto"`. The default preset follows standard Neovim highlight groups so it fits arbitrary colorschemes without extra theme tuning.
 - `theme_dir`: optional directory containing custom theme files named `<preset>.lua`.
 - `themes`: inline custom theme table keyed by preset name.
 - `highlights`: override highlight specs by semantic key.
@@ -267,7 +281,7 @@ Highlight override example:
 
 ```lua
 require("markdown-table-wrap").setup({
-  highlight_preset = "tokyonight",
+  highlight_preset = "default",
   highlights = {
     border = { fg = "#7aa2f7" },
     code = { fg = "#9ece6a" },
@@ -427,15 +441,15 @@ nvim --headless -u NONE --cmd "set shadafile=NONE" --cmd "set noswapfile" \
 
 The default mode hides the source table text with extmark conceal and overlays rendered rows on top of the original table rows. This is a visual replacement, not a buffer edit. It does not yet implement Treesitter-aware table discovery or full GitHub Flavored Markdown table edge cases.
 
-With `inline_viewport_scrolling = true`, long rendered tables are shown as a scrollable visual slice inside the original source table height. Use `:MarkdownTableScrollDown` / `:MarkdownTableScrollUp` for inline reading, or `:MarkdownTableFloatPreview` for a fully scrollable preview buffer.
+With `inline_viewport_scrolling = false`, the complete rendered table is shown inline by default, even when wrapped cells make it taller than the source table. This is easier to understand when first trying the plugin because there is no hidden rendered content.
 
-Use `:MarkdownTableToggleInlineViewport` when you prefer the full inline expansion. In viewport mode, `:MarkdownTableScrollDown` and `:MarkdownTableScrollUp` page through the rendered table slice. In full inline mode, those commands fall back to normal window scrolling because the full rendered table is already visible as virtual lines.
+Enable `inline_viewport_scrolling = true` or use `:MarkdownTableToggleInlineViewport` when you prefer a scrollable visual slice inside the original source table height. In viewport mode, `:MarkdownTableScrollDown` and `:MarkdownTableScrollUp` page through the rendered table slice. In full inline mode, those commands fall back to normal window scrolling because the full rendered table is already visible as virtual lines.
 
 ## Platform Notes
 
 Inline replacement is built on Neovim extmarks, conceal, overlay virtual text, and optional virtual lines. That stack is consistent logically, but terminals and platforms can expose different visual edge cases when the original Markdown source line is longer than the window.
 
-Version `0.1.1` hardens cross-platform inline rendering by defaulting to `inline_virtual_text = "overlay"` and `inline_disable_wrap = true`. The second option matters because a concealed source row can still soft-wrap into extra screen lines under some Linux terminal setups, causing fragments of the original Markdown to appear below the rendered table. Temporarily disabling `wrap` while inline replace mode is active keeps the rendered slice and the concealed source aligned on both macOS and Linux.
+Version `0.1.2` keeps the cross-platform inline rendering hardening from `0.1.1`, including `inline_virtual_text = "overlay"` and `inline_disable_wrap = true`. The second option matters because a concealed source row can still soft-wrap into extra screen lines under some Linux terminal setups, causing fragments of the original Markdown to appear below the rendered table. Temporarily disabling `wrap` while inline replace mode is active keeps the rendered slice and the concealed source aligned on both macOS and Linux.
 
 ## Roadmap: More Exact Inline Rendering
 
