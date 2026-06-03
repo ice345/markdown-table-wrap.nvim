@@ -151,11 +151,12 @@ local function padded_chunks(line_obj, line_index, target_width)
   return chunks
 end
 
-local function virt_lines(lines)
+local function virt_lines(lines, start_index)
   local result = {}
+  start_index = start_index or 1
 
   for index, line in ipairs(lines) do
-    table.insert(result, chunks_from_line_object(line, index))
+    table.insert(result, chunks_from_line_object(line, start_index + index - 1))
   end
 
   return result
@@ -298,7 +299,7 @@ local function show_replace(bufnr, table_info, config, rendered)
     end
 
     vim.api.nvim_buf_set_extmark(bufnr, namespace, table_info.end_lnum - 1, 0, {
-      virt_lines = virt_lines(extra),
+      virt_lines = virt_lines(extra, overlay_count + 1),
       virt_lines_above = false,
       right_gravity = false,
       priority = priority,

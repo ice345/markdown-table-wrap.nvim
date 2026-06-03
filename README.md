@@ -88,6 +88,7 @@ return {
       auto_preview_in_insert = false,
       clear_on_cursor_leave = true,
       clear_on_insert = true,
+      clear_on_visual = true,
       debounce_ms = 80,
       overlay_priority = 10000,
       overlay_fill = true,
@@ -223,6 +224,7 @@ require("markdown-table-wrap").setup({
   auto_preview_in_insert = false,
   clear_on_cursor_leave = true,
   clear_on_insert = true,
+  clear_on_visual = true,
   debounce_ms = 80,
   overlay_priority = 10000,
   overlay_fill = true,
@@ -266,6 +268,7 @@ Options:
 - `auto_preview_in_insert`: keep replacement rendering active while typing in Insert mode.
 - `clear_on_cursor_leave`: clear inline rendering when the cursor leaves a table or window.
 - `clear_on_insert`: reveal source Markdown while editing, then re-render on `InsertLeave`.
+- `clear_on_visual`: reveal source Markdown while selecting text in Visual, Visual Line, or Visual Block mode, then re-render after leaving Visual mode.
 - `debounce_ms`: delay before automatic refresh after movement or text changes.
 - `overlay_priority`: extmark priority used to cover other renderers such as `render-markdown.nvim`.
 - `overlay_fill`: fill the rest of each rendered source line with blank overlay text so long source rows do not leak past the rendered table.

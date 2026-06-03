@@ -167,6 +167,7 @@ Default setup:
     auto_preview_in_insert = false,
     clear_on_cursor_leave = true,
     clear_on_insert = true,
+    clear_on_visual = true,
     debounce_ms = 80,
     overlay_priority = 10000,
     overlay_fill = true,
@@ -217,6 +218,10 @@ inline_virtual_text~
 inline_disable_wrap~
     Temporarily sets nowrap in windows showing inline replace mode so long
     source rows do not soft-wrap underneath the rendered table.
+
+clear_on_visual~
+    Reveal source Markdown while selecting text in Visual, Visual Line, or
+    Visual Block mode, then re-render after leaving Visual mode.
 
 auto_preview~
     Automatically render Markdown tables.

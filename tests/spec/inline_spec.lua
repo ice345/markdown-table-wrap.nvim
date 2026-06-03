@@ -244,6 +244,59 @@ h.test("inline viewport toggle switches between sliced and full rendering", func
   end)
 end)
 
+h.test("extra inline virtual lines keep their original rendered line index", function()
+  local plugin = require("markdown-table-wrap")
+  local inline = require("markdown-table-wrap.inline")
+
+  plugin.setup({
+    debounce_ms = 0,
+    render_all = true,
+    auto_preview = true,
+    inline_viewport_scrolling = false,
+    row_separator = true,
+  })
+
+  h.with_buffer({
+    "| 成员 | 分工 |",
+    "| --- | --- |",
+    "| 组长 | 项目规划 |",
+    "| 成员 A | 数据集整理 |",
+    "| 成员 B | Web 系统实现 |",
+    "| 成员 C | 报告撰写 |",
+  }, function(buf)
+    vim.bo[buf].filetype = "markdown"
+    plugin.refresh_auto({ force = true })
+
+    local marks = vim.api.nvim_buf_get_extmarks(buf, inline.namespace(), 0, -1, { details = true })
+    local member_b_chunks = nil
+
+    for _, mark in ipairs(marks) do
+      for _, virt_line in ipairs((mark[4] or {}).virt_lines or {}) do
+        local text = {}
+        for _, chunk in ipairs(virt_line) do
+          table.insert(text, chunk[1])
+        end
+
+        if table.concat(text):find("成员 B", 1, true) then
+          member_b_chunks = virt_line
+        end
+      end
+    end
+
+    h.assert_true("member B rendered as extra virtual line", member_b_chunks ~= nil)
+
+    local groups = {}
+    for _, chunk in ipairs(member_b_chunks) do
+      groups[chunk[2]] = true
+    end
+
+    h.assert_false("member B is not treated as table header", groups.MarkdownTableWrapHeader)
+    h.assert_true("member B keeps normal inline highlight", groups.MarkdownTableWrapInline)
+
+    inline.clear(buf)
+  end)
+end)
+
 h.test("table link opener uses source cell urls", function()
   local nav = require("markdown-table-wrap.nav")
   local opened = nil

@@ -19,6 +19,7 @@ local defaults = {
   auto_preview_in_insert = false,
   clear_on_cursor_leave = true,
   clear_on_insert = true,
+  clear_on_visual = true,
   debounce_ms = 80,
   overlay_priority = 10000,
   overlay_fill = true,
@@ -54,6 +55,7 @@ M.state = {
   paused_buffers = {},
   last_signature = {},
   did_setup = false,
+  visual_buffers = {},
 }
 
 local function is_markdown_buffer()
@@ -69,6 +71,7 @@ local function validate_config()
   M.config.overlay_priority = math.max(1, tonumber(M.config.overlay_priority) or defaults.overlay_priority)
   M.config.render_all = M.config.render_all ~= false
   M.config.overlay_fill = M.config.overlay_fill ~= false
+  M.config.clear_on_visual = M.config.clear_on_visual ~= false
   M.config.inline_disable_wrap = M.config.inline_disable_wrap ~= false
   M.config.inline_viewport_scrolling = M.config.inline_viewport_scrolling ~= false
   M.config.map_gx = M.config.map_gx ~= false
@@ -128,6 +131,7 @@ local function table_signature(bufnr, table_info)
     tostring(M.config.table_border),
     tostring(M.config.row_separator),
     tostring(M.config.inline_mode),
+    tostring(M.config.clear_on_visual),
     tostring(M.config.inline_virtual_text),
     tostring(M.config.inline_disable_wrap),
     tostring(M.config.inline_viewport_scrolling),
@@ -146,6 +150,7 @@ local function all_tables_signature(bufnr, tables)
     tostring(M.config.table_border),
     tostring(M.config.row_separator),
     tostring(M.config.inline_mode),
+    tostring(M.config.clear_on_visual),
     tostring(M.config.inline_virtual_text),
     tostring(M.config.inline_disable_wrap),
     tostring(M.config.overlay_fill),
@@ -456,6 +461,31 @@ local function create_autocmds()
     end,
   })
 
+  vim.api.nvim_create_autocmd("ModeChanged", {
+    group = M.state.augroup,
+    callback = function()
+      if not is_markdown_buffer() or M.config.clear_on_visual == false then
+        return
+      end
+
+      local bufnr = vim.api.nvim_get_current_buf()
+      local mode = vim.api.nvim_get_mode().mode
+      local visual = mode:match("^[vV\22]") ~= nil
+
+      if visual then
+        require("markdown-table-wrap.inline").clear(bufnr)
+        if M.state.inline_buf == bufnr then
+          M.state.inline_buf = nil
+        end
+        M.state.last_signature[bufnr] = nil
+        M.state.visual_buffers[bufnr] = true
+      elseif M.state.visual_buffers[bufnr] then
+        M.state.visual_buffers[bufnr] = nil
+        M.schedule_refresh({ silent = true })
+      end
+    end,
+  })
+
   vim.api.nvim_create_autocmd({ "WinEnter", "BufWinEnter" }, {
     group = M.state.augroup,
     callback = function(args)
@@ -485,6 +515,7 @@ local function create_autocmds()
     callback = function(args)
       M.state.paused_buffers[args.buf] = nil
       M.state.last_signature[args.buf] = nil
+      M.state.visual_buffers[args.buf] = nil
       if M.state.inline_buf == args.buf then
         M.state.inline_buf = nil
       end
