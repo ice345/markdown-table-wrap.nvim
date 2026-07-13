@@ -33,7 +33,7 @@ end
 local function span_kind_at(spans, start_col)
   for _, span in ipairs(spans or {}) do
     if start_col >= span.start_col and start_col < span.end_col then
-      return span.kind
+      return span
     end
   end
   return "text"
@@ -46,7 +46,12 @@ local function styled_chars(cell)
 
   local result = {}
   for ch, start_col in iter_chars_with_pos(cell.text or "") do
-    table.insert(result, { text = ch, kind = span_kind_at(cell.spans, start_col) })
+    local span = span_kind_at(cell.spans, start_col)
+    if type(span) == "table" then
+      table.insert(result, { text = ch, kind = span.kind, url = span.url })
+    else
+      table.insert(result, { text = ch, kind = span })
+    end
   end
 
   local coalesced = {}
@@ -67,6 +72,7 @@ local function line_from_chars(chars)
   local spans = {}
   local offset = 0
   local current_kind = nil
+  local current_url = nil
   local current_start = nil
 
   local function close_span()
@@ -75,18 +81,21 @@ local function line_from_chars(chars)
         start_col = current_start,
         end_col = offset,
         kind = current_kind,
+        url = current_url,
       })
     end
     current_kind = nil
+    current_url = nil
     current_start = nil
   end
 
   for _, item in ipairs(chars) do
     table.insert(text, item.text)
 
-    if item.kind ~= current_kind then
+    if item.kind ~= current_kind or item.url ~= current_url then
       close_span()
       current_kind = item.kind
+      current_url = item.url
       current_start = offset
     end
 

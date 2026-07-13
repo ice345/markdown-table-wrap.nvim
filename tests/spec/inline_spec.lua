@@ -65,6 +65,56 @@ h.test("floating preview includes highlight extmarks", function()
   end)
 end)
 
+h.test("floating preview gx opens the rendered link under the cursor", function()
+  local parser = require("markdown-table-wrap.parser")
+  local render = require("markdown-table-wrap.render")
+  local opened = nil
+  local original_open = vim.ui.open
+  vim.ui.open = function(url)
+    opened = url
+  end
+
+  h.with_buffer({
+    "| Name | Link |",
+    "| --- | --- |",
+    "| Video | [youtube](https://www.youtube.com) |",
+  }, function(buf)
+    vim.bo[buf].filetype = "markdown"
+    local parsed = parser.parse_at_cursor(buf, 3)
+    local rendered = render.render_table(parsed, {
+      max_width_ratio = 0.9,
+      min_col_width = 4,
+      max_col_width = 80,
+      use_unicode_border = true,
+      table_border = "rounded",
+      row_separator = true,
+      border = "rounded",
+    })
+    local _, win = render.open_float(rendered, { border = "rounded" })
+    local target = nil
+
+    for row, line_object in ipairs(rendered.line_objects) do
+      for _, chunk in ipairs(line_object.chunks or {}) do
+        if chunk.kind == "link" and chunk.url then
+          target = { row, chunk.start_col }
+          break
+        end
+      end
+      if target then
+        break
+      end
+    end
+
+    h.assert_true("floating link target", target ~= nil)
+    vim.api.nvim_win_set_cursor(win, target)
+    vim.cmd("normal gx")
+    h.assert_eq("opened floating URL", opened, "https://www.youtube.com")
+    vim.api.nvim_win_close(win, true)
+  end)
+
+  vim.ui.open = original_open
+end)
+
 h.test("floating preview preserves inline rendering in render_all mode", function()
   local plugin = require("markdown-table-wrap")
   local inline = require("markdown-table-wrap.inline")
@@ -314,6 +364,28 @@ h.test("table link opener uses source cell urls", function()
     vim.api.nvim_win_set_cursor(0, { 3, 12 })
     h.assert_true("open table link", nav.open_link())
     h.assert_eq("opened url", opened, "https://youtube.com/watch")
+  end)
+
+  vim.ui.open = original_open
+end)
+
+h.test("table link opener falls back to the only parsed table link", function()
+  local nav = require("markdown-table-wrap.nav")
+  local opened = nil
+  local original_open = vim.ui.open
+  vim.ui.open = function(url)
+    opened = url
+  end
+
+  h.with_buffer({
+    "| Name | Link |",
+    "| --- | --- |",
+    "| Video | [youtube](https://www.youtube.com) |",
+  }, function(buf)
+    vim.bo[buf].filetype = "markdown"
+    vim.api.nvim_win_set_cursor(0, { 3, 2 })
+    h.assert_true("open only parsed table link", nav.open_link())
+    h.assert_eq("opened parsed table URL", opened, "https://www.youtube.com")
   end)
 
   vim.ui.open = original_open

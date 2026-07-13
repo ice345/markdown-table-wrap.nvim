@@ -1,6 +1,6 @@
 local M = {}
 
-M.version = "0.1.2"
+M.version = "0.1.4"
 
 local defaults = {
   max_width_ratio = 0.9,
@@ -532,6 +532,11 @@ local function create_autocmds()
 
       vim.keymap.set("n", "gx", function()
         if not require("markdown-table-wrap.nav").open_link() then
+          local parser = require("markdown-table-wrap.parser")
+          local table_info = parser.parse_at_cursor(vim.api.nvim_get_current_buf(), vim.api.nvim_win_get_cursor(0)[1])
+          if table_info then
+            return
+          end
           vim.cmd("normal! gx")
         end
       end, { buffer = args.buf, silent = true, desc = "Open Markdown table link" })

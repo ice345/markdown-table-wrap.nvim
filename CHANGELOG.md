@@ -2,6 +2,16 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
+## 0.1.4 - Floating Link Navigation
+
+### Fixed
+
+- Add buffer-local `gx` support inside floating table previews.
+- Open the original URL instead of the rendered link label.
+- Preserve link URL metadata through wrapping and rendering.
+- Support links spanning multiple rendered lines.
+- Prevent native `gx` from opening labels such as `youtube` or `Details`.
+
 ## 0.1.2 - Setup And Defaults Cleanup
 
 ### Fixed

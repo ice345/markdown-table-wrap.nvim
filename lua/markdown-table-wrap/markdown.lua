@@ -115,6 +115,22 @@ function M.inline_to_text(text)
 end
 
 function M.extract_links(text)
+  if type(text) == "table" and text.spans then
+    local parsed_links = {}
+    for _, span in ipairs(text.spans) do
+      if (span.kind == "link" or span.kind == "image") and span.url and span.url ~= "" then
+        table.insert(parsed_links, {
+          start_col = span.start_col,
+          end_col = span.end_col,
+          text = text.text:sub(span.start_col + 1, span.end_col),
+          url = span.url,
+          kind = span.kind,
+        })
+      end
+    end
+    return parsed_links
+  end
+
   text = tostring(text or "")
   local links = {}
 

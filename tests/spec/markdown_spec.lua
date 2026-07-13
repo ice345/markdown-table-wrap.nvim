@@ -75,3 +75,13 @@ h.test("markdown hard breaks", function()
   h.assert_eq("br break", markdown.inline_to_text("a<br>b"), "a\nb")
   h.assert_eq("br slash break", markdown.inline_to_text("a<br/>b"), "a\nb")
 end)
+
+h.test("markdown extracts links from parsed cells", function()
+  local markdown = require("markdown-table-wrap.markdown")
+  local parsed = markdown.parse_inline("[youtube](https://www.youtube.com)")
+  local links = markdown.extract_links(parsed)
+
+  h.assert_eq("parsed cell link count", #links, 1)
+  h.assert_eq("parsed cell link text", links[1].text, "youtube")
+  h.assert_eq("parsed cell link url", links[1].url, "https://www.youtube.com")
+end)

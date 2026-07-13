@@ -262,6 +262,8 @@ local function add_cell_chunks(chunks, cell_line, offset)
         start_col = offset + span.start_col,
         end_col = offset + span.end_col,
         hl_group = hl,
+        kind = span.kind,
+        url = span.url,
       })
     end
   end
@@ -375,6 +377,36 @@ function M.open_float(rendered, config)
   vim.wo[win].signcolumn = "no"
   vim.wo[win].foldcolumn = "0"
   vim.wo[win].list = false
+
+  local function open_float_link()
+    local cursor = vim.api.nvim_win_get_cursor(win)
+    local line_object = rendered.line_objects and rendered.line_objects[cursor[1]]
+    local col = cursor[2]
+    local url = nil
+
+    for _, chunk in ipairs(line_object and line_object.chunks or {}) do
+      if (chunk.kind == "link" or chunk.kind == "image") and chunk.url and chunk.url ~= "" then
+        if col >= chunk.start_col and col < chunk.end_col then
+          url = chunk.url
+          break
+        end
+      end
+    end
+
+    if not url then
+      vim.notify("MarkdownTableWrap: place the cursor over a rendered link.", vim.log.levels.INFO)
+      return
+    end
+
+    vim.ui.open(url)
+  end
+
+  vim.keymap.set("n", "gx", open_float_link, {
+    buffer = buf,
+    silent = true,
+    nowait = true,
+    desc = "Open rendered Markdown table link",
+  })
 
   vim.keymap.set("n", "q", function()
     if vim.api.nvim_win_is_valid(win) then
