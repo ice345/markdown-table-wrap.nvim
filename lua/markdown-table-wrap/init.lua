@@ -78,6 +78,21 @@ local function validate_config()
   M.config.inline_viewport_scrolling = M.config.inline_viewport_scrolling ~= false
   M.config.map_gx = M.config.map_gx ~= false
 
+  if type(M.config.extra_filetypes) ~= "table" or #M.config.extra_filetypes == 0 then
+    M.config.extra_filetypes = {}
+  else
+    local valid = true
+    for _, v in ipairs(M.config.extra_filetypes) do
+      if type(v) ~= "string" then
+        valid = false
+        break
+      end
+    end
+    if not valid then
+      M.config.extra_filetypes = {}
+    end
+  end
+
   if M.config.inline_virtual_text ~= "overlay" and M.config.inline_virtual_text ~= "win_col" then
     M.config.inline_virtual_text = defaults.inline_virtual_text
   end
