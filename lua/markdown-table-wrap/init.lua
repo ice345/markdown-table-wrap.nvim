@@ -29,6 +29,7 @@ local defaults = {
   highlight_preset = "default",
   theme_dir = nil,
   themes = {},
+  extra_filetypes = {},
   highlights = {},
   map_gx = true,
   link = {
@@ -60,7 +61,8 @@ M.state = {
 
 local function is_markdown_buffer()
   local ft = vim.bo.filetype
-  return ft == "markdown" or ft == "md" or ft == "quarto" or ft == "rmarkdown"
+  local extra = M.config.extra_filetypes or {}
+  return ft == "markdown" or ft == "md" or ft == "quarto" or ft == "rmarkdown" or vim.tbl_contains(extra, ft)
 end
 
 local function validate_config()
@@ -178,7 +180,7 @@ local function table_under_cursor(opts)
 
   if not is_markdown_buffer() then
     if not opts.silent then
-      vim.notify("MarkdownTableWrap: preview is only available in Markdown buffers.", vim.log.levels.INFO)
+      vim.notify("MarkdownTableWrap: preview is only available in Markdown buffers or fts added to extra_filetypes in opts.", vim.log.levels.INFO) 
     end
     return nil
   end
@@ -524,8 +526,13 @@ local function create_autocmds()
 
   vim.api.nvim_create_autocmd("FileType", {
     group = M.state.augroup,
-    pattern = { "markdown", "md", "quarto", "rmarkdown" },
+    pattern = "*",
     callback = function(args)
+      local fts = { "markdown", "md", "quarto", "rmarkdown" }
+      vim.list_extend(fts, M.config.extra_filetypes or {})
+      if not vim.tbl_contains(fts, vim.bo[args.buf].filetype) then
+        return
+      end
       if not M.config.map_gx then
         return
       end
