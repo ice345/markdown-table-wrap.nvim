@@ -259,6 +259,30 @@ map_gx~
     native gx. This avoids opening the concealed source word under rendered
     virtual text, such as trying to open "Details" instead of the source URL.
 
+extra_filetypes~
+    List of additional filetypes to enable table rendering for. The default
+    is {}, meaning only markdown, md, quarto, and rmarkdown buffers
+    render tables. Example:
+>
+      require("markdown-table-wrap").setup({
+        extra_filetypes = { "text" },
+      })
+<
+    NOTE for LazyVim users: If you add extra filetypes, you must also
+    include them in the plugin's ft list to load the plugin for those
+    filetypes:
+>
+      return {
+        {
+          "ice345/markdown-table-wrap.nvim",
+          ft = { "markdown", "text" },
+          opts = {
+            extra_filetypes = { "text" },
+          },
+        },
+      }
+<
+
 ==============================================================================
 HIGHLIGHTS                                  *markdown-table-wrap-highlights*
 

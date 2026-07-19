@@ -281,6 +281,27 @@ Options:
 - `highlights`: override highlight specs by semantic key.
 - `map_gx`: map `gx` in Markdown buffers to `:MarkdownTableOpenLink` with fallback to native `gx`.
 - `link`: icon configuration for links, wiki links, images, and URL pattern matches.
+- `extra_filetypes`: list of additional filetypes to enable table rendering for. The default is `{}`, meaning only `markdown`, `md`, `quarto`, and `rmarkdown` buffers render tables.
+
+```lua
+require("markdown-table-wrap").setup({
+  extra_filetypes = { "text" },
+})
+```
+
+> **Note for LazyVim users:** If you add extra filetypes, you must also include them in the plugin's `ft` list to load the plugin for those filetypes:
+>
+> ```lua
+> return {
+>   {
+>     "ice345/markdown-table-wrap.nvim",
+>     ft = { "markdown", "text" },
+>     opts = {
+>       extra_filetypes = { "text" },
+>     },
+>   },
+> }
+> ```
 
 Highlight override example:
 
