@@ -77,3 +77,64 @@ h.test("plugin loader does not override manual setup", function()
   h.assert_eq("manual highlight_preset preserved", plugin.config.highlight_preset, "default")
   h.assert_false("manual viewport preference preserved", plugin.config.inline_viewport_scrolling)
 end)
+
+h.test("extra_filetypes renders in configured filetype", function()
+  local plugin = require("markdown-table-wrap")
+  local inline = require("markdown-table-wrap.inline")
+
+  plugin.setup({
+    debounce_ms = 0,
+    render_all = true,
+    auto_preview = true,
+    max_col_width = 14,
+    min_col_width = 4,
+    extra_filetypes = { "text" },
+  })
+
+  h.with_buffer({
+    "| A | B |",
+    "| --- | --- |",
+    "| foo | bar |",
+  }, function(buf)
+    vim.bo[buf].filetype = "text"
+    plugin.refresh_auto({ force = true })
+
+    local marks = vim.api.nvim_buf_get_extmarks(buf, inline.namespace(), 0, -1, { details = true })
+    local rendered = #marks > 0
+
+    h.assert_true("table rendered in extra_filetype text", rendered)
+
+    inline.clear(buf)
+  end)
+end)
+
+h.test("non-configured filetypes are ignored", function()
+  local plugin = require("markdown-table-wrap")
+  local inline = require("markdown-table-wrap.inline")
+
+
+  plugin.setup({
+    debounce_ms = 0,
+    render_all = true,
+    auto_preview = true,
+    max_col_width = 14,
+    min_col_width = 4,
+    extra_filetypes = { "text" },
+  })
+
+  h.with_buffer({
+    "| A | B |",
+    "| --- | --- |",
+    "| foo | bar |",
+  }, function(buf)
+    vim.bo[buf].filetype = "python"
+    plugin.refresh_auto({ force = true })
+
+    local marks = vim.api.nvim_buf_get_extmarks(buf, inline.namespace(), 0, -1, { details = true })
+    local rendered = #marks > 0
+
+    h.assert_false("table not rendered in non-configured filetype", rendered)
+
+    inline.clear(buf)
+  end)
+end)
