@@ -195,7 +195,10 @@ local function table_under_cursor(opts)
 
   if not is_markdown_buffer() then
     if not opts.silent then
-      vim.notify("MarkdownTableWrap: preview is only available in Markdown buffers or fts added to extra_filetypes in opts.", vim.log.levels.INFO) 
+      vim.notify(
+        "MarkdownTableWrap: preview is only available in Markdown buffers or fts added to extra_filetypes in opts.",
+        vim.log.levels.INFO
+      )
     end
     return nil
   end

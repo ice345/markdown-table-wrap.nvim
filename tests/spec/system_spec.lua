@@ -112,7 +112,6 @@ h.test("non-configured filetypes are ignored", function()
   local plugin = require("markdown-table-wrap")
   local inline = require("markdown-table-wrap.inline")
 
-
   plugin.setup({
     debounce_ms = 0,
     render_all = true,
