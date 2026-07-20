@@ -29,6 +29,7 @@ local defaults = {
   highlight_preset = "default",
   theme_dir = nil,
   themes = {},
+  extra_filetypes = {},
   highlights = {},
   map_gx = true,
   link = {
@@ -60,7 +61,8 @@ M.state = {
 
 local function is_markdown_buffer()
   local ft = vim.bo.filetype
-  return ft == "markdown" or ft == "md" or ft == "quarto" or ft == "rmarkdown"
+  local extra = M.config.extra_filetypes or {}
+  return ft == "markdown" or ft == "md" or ft == "quarto" or ft == "rmarkdown" or vim.tbl_contains(extra, ft)
 end
 
 local function validate_config()
@@ -75,6 +77,21 @@ local function validate_config()
   M.config.inline_disable_wrap = M.config.inline_disable_wrap ~= false
   M.config.inline_viewport_scrolling = M.config.inline_viewport_scrolling ~= false
   M.config.map_gx = M.config.map_gx ~= false
+
+  if type(M.config.extra_filetypes) ~= "table" or #M.config.extra_filetypes == 0 then
+    M.config.extra_filetypes = {}
+  else
+    local valid = true
+    for _, v in ipairs(M.config.extra_filetypes) do
+      if type(v) ~= "string" then
+        valid = false
+        break
+      end
+    end
+    if not valid then
+      M.config.extra_filetypes = {}
+    end
+  end
 
   if M.config.inline_virtual_text ~= "overlay" and M.config.inline_virtual_text ~= "win_col" then
     M.config.inline_virtual_text = defaults.inline_virtual_text
@@ -178,7 +195,7 @@ local function table_under_cursor(opts)
 
   if not is_markdown_buffer() then
     if not opts.silent then
-      vim.notify("MarkdownTableWrap: preview is only available in Markdown buffers.", vim.log.levels.INFO)
+      vim.notify("MarkdownTableWrap: preview is only available in Markdown buffers or fts added to extra_filetypes in opts.", vim.log.levels.INFO) 
     end
     return nil
   end
@@ -524,8 +541,13 @@ local function create_autocmds()
 
   vim.api.nvim_create_autocmd("FileType", {
     group = M.state.augroup,
-    pattern = { "markdown", "md", "quarto", "rmarkdown" },
+    pattern = "*",
     callback = function(args)
+      local fts = { "markdown", "md", "quarto", "rmarkdown" }
+      vim.list_extend(fts, M.config.extra_filetypes or {})
+      if not vim.tbl_contains(fts, vim.bo[args.buf].filetype) then
+        return
+      end
       if not M.config.map_gx then
         return
       end
