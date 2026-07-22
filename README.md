@@ -94,6 +94,7 @@ return {
       overlay_fill = true,
       inline_virtual_text = "overlay",
       inline_disable_wrap = true,
+      inline_wrap_scope = "cursor",
       inline_viewport_scrolling = false,
       highlight_preset = "default",
       theme_dir = nil,
@@ -230,6 +231,7 @@ require("markdown-table-wrap").setup({
   overlay_fill = true,
   inline_virtual_text = "overlay",
   inline_disable_wrap = true,
+  inline_wrap_scope = "cursor",
   inline_viewport_scrolling = false,
   highlight_preset = "default",
   theme_dir = nil,
@@ -274,6 +276,7 @@ Options:
 - `overlay_fill`: fill the rest of each rendered source line with blank overlay text so long source rows do not leak past the rendered table.
 - `inline_virtual_text`: `"overlay"` or `"win_col"` for the replace-mode virtual text strategy. The default `"overlay"` is the more portable path.
 - `inline_disable_wrap`: temporarily set `nowrap` in windows showing inline replace mode so long source rows do not soft-wrap underneath the rendered table.
+- `inline_wrap_scope`: controls where `inline_disable_wrap` applies. `"always"` keeps the window-wide `nowrap` behavior, `"cursor"` (the default) disables wrapping only while the cursor is inside a rendered table, and `"never"` leaves `wrap` fully under user control.
 - `inline_viewport_scrolling`: when `true`, `:MarkdownTableScrollDown` and `:MarkdownTableScrollUp` page through rendered rows inside the original table height. The default is `false`, which shows the complete rendered table inline with extra virtual lines.
 - `highlight_preset`: `"default"`, `"tokyonight"`, `"catppuccin"`, `"render_markdown"`, or `"auto"`. The default preset follows standard Neovim highlight groups so it fits arbitrary colorschemes without extra theme tuning.
 - `theme_dir`: optional directory containing custom theme files named `<preset>.lua`.
@@ -475,7 +478,7 @@ Enable `inline_viewport_scrolling = true` or use `:MarkdownTableToggleInlineView
 
 Inline replacement is built on Neovim extmarks, conceal, overlay virtual text, and optional virtual lines. That stack is consistent logically, but terminals and platforms can expose different visual edge cases when the original Markdown source line is longer than the window.
 
-Version `0.1.2` keeps the cross-platform inline rendering hardening from `0.1.1`, including `inline_virtual_text = "overlay"` and `inline_disable_wrap = true`. The second option matters because a concealed source row can still soft-wrap into extra screen lines under some Linux terminal setups, causing fragments of the original Markdown to appear below the rendered table. Temporarily disabling `wrap` while inline replace mode is active keeps the rendered slice and the concealed source aligned on both macOS and Linux.
+Version `0.1.2` keeps the cross-platform inline rendering hardening from `0.1.1`, including `inline_virtual_text = "overlay"` and `inline_disable_wrap = true`. The second option matters because a concealed source row can still soft-wrap into extra screen lines under some Linux terminal setups, causing fragments of the original Markdown to appear below the rendered table. By default, `inline_wrap_scope = "cursor"` limits that temporary `nowrap` to the table under the cursor, so ordinary Markdown paragraphs can continue to wrap normally. Use `inline_wrap_scope = "always"` for the strictest cross-terminal table stability.
 
 ## Roadmap: More Exact Inline Rendering
 

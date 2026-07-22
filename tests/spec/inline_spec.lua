@@ -39,6 +39,46 @@ h.test("inline whole-buffer render uses extmarks and conceal options", function(
   end)
 end)
 
+h.test("cursor wrap scope preserves prose wrapping outside tables", function()
+  local plugin = require("markdown-table-wrap")
+  local inline = require("markdown-table-wrap.inline")
+
+  plugin.setup({
+    debounce_ms = 0,
+    render_all = true,
+    auto_preview = true,
+    inline_wrap_scope = "cursor",
+  })
+
+  h.with_buffer({
+    "A long Markdown paragraph should wrap normally.",
+    "",
+    "| A | B |",
+    "| --- | --- |",
+    "| one | two |",
+    "",
+    "Another long Markdown paragraph should also wrap normally.",
+  }, function(buf)
+    vim.bo[buf].filetype = "markdown"
+    vim.wo.wrap = true
+
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    plugin.refresh_auto({ force = true })
+    h.assert_true("wrap is kept outside the table", vim.wo.wrap)
+
+    vim.api.nvim_win_set_cursor(0, { 3, 0 })
+    inline.update_wrap_for_cursor(buf)
+    h.assert_false("wrap is disabled inside the table", vim.wo.wrap)
+
+    vim.api.nvim_win_set_cursor(0, { 7, 0 })
+    inline.update_wrap_for_cursor(buf)
+    h.assert_true("wrap is restored after leaving the table", vim.wo.wrap)
+
+    inline.clear(buf)
+    h.assert_true("wrap remains enabled after clearing", vim.wo.wrap)
+  end)
+end)
+
 h.test("floating preview includes highlight extmarks", function()
   local parser = require("markdown-table-wrap.parser")
   local render = require("markdown-table-wrap.render")

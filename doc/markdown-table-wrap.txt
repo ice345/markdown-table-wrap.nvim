@@ -173,6 +173,7 @@ Default setup:
     overlay_fill = true,
     inline_virtual_text = "overlay",
     inline_disable_wrap = true,
+    inline_wrap_scope = "cursor",
     inline_viewport_scrolling = false,
     highlight_preset = "default",
     theme_dir = nil,
@@ -216,8 +217,22 @@ inline_virtual_text~
     "overlay" is the default and is generally the most portable choice.
 
 inline_disable_wrap~
-    Temporarily sets nowrap in windows showing inline replace mode so long
-    source rows do not soft-wrap underneath the rendered table.
+    Enables the temporary nowrap protection for inline replace mode. Long
+    concealed source rows can otherwise soft-wrap underneath the rendered
+    table on some terminal and platform combinations.
+
+inline_wrap_scope~
+    Controls where |inline_disable_wrap| applies:
+
+    "always" disables wrap for the whole window while inline tables are
+       active. This is the strictest and most stable setting.
+
+    "cursor" (the default) disables wrap only while the cursor is inside a
+    rendered table, then restores the previous window-local wrap setting so
+    ordinary Markdown paragraphs continue to wrap normally.
+
+    "never" leaves wrap fully under user control. This may allow concealed
+    source rows to leak or flicker on long tables.
 
 clear_on_visual~
     Reveal source Markdown while selecting text in Visual, Visual Line, or

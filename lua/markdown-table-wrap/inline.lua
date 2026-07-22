@@ -166,7 +166,48 @@ local function ensure_highlights(config)
   require("markdown-table-wrap.theme").apply(config)
 end
 
-local function set_render_window(winid, config)
+local function cursor_in_tables(winid, tables)
+  if not vim.api.nvim_win_is_valid(winid) then
+    return false
+  end
+
+  local cursor_lnum = vim.api.nvim_win_get_cursor(winid)[1]
+  for _, table_info in ipairs(tables or {}) do
+    if cursor_lnum >= table_info.start_lnum and cursor_lnum <= table_info.end_lnum then
+      return true
+    end
+  end
+
+  return false
+end
+
+local function should_disable_wrap(config, in_table)
+  if config.inline_mode ~= "replace" or config.inline_disable_wrap == false then
+    return false
+  end
+
+  if config.inline_wrap_scope == "never" then
+    return false
+  end
+
+  if config.inline_wrap_scope == "cursor" then
+    return in_table
+  end
+
+  return true
+end
+
+local function restore_saved_wrap(winid)
+  local previous_wrap = saved_wraps[winid]
+  if previous_wrap ~= nil and vim.api.nvim_win_is_valid(winid) then
+    if vim.wo[winid].wrap ~= previous_wrap then
+      vim.wo[winid].wrap = previous_wrap
+    end
+  end
+  saved_wraps[winid] = nil
+end
+
+local function set_render_window(winid, config, in_table)
   winid = winid or vim.api.nvim_get_current_win()
   if not vim.api.nvim_win_is_valid(winid) then
     return
@@ -185,17 +226,22 @@ local function set_render_window(winid, config)
   end
   vim.wo[winid].concealcursor = "nvc"
 
-  if config.inline_disable_wrap ~= false then
+  if should_disable_wrap(config, in_table) then
     if saved_wraps[winid] == nil then
       saved_wraps[winid] = vim.wo[winid].wrap
     end
-    vim.wo[winid].wrap = false
+    if vim.wo[winid].wrap then
+      vim.wo[winid].wrap = false
+    end
+  else
+    restore_saved_wrap(winid)
   end
 end
 
 local function set_render_for_buffer(bufnr, config)
+  local tables = active_tables[bufnr] or {}
   for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
-    set_render_window(winid, config)
+    set_render_window(winid, config, cursor_in_tables(winid, tables))
   end
 end
 
@@ -212,11 +258,7 @@ local function restore_render_window(winid)
   end
   saved_concealcursors[winid] = nil
 
-  local previous_wrap = saved_wraps[winid]
-  if previous_wrap ~= nil and vim.api.nvim_win_is_valid(winid) then
-    vim.wo[winid].wrap = previous_wrap
-  end
-  saved_wraps[winid] = nil
+  restore_saved_wrap(winid)
 end
 
 local function restore_render_for_buffer(bufnr)
@@ -257,8 +299,6 @@ local function view_offset(bufnr, table_info, source_count, rendered_count, conf
 end
 
 local function show_replace(bufnr, table_info, config, rendered)
-  set_render_for_buffer(bufnr, config)
-
   local source_count = table_info.end_lnum - table_info.start_lnum + 1
   local rendered_count = #rendered.lines
   local first_rendered = view_offset(bufnr, table_info, source_count, rendered_count, config)
@@ -376,6 +416,9 @@ function M.show(bufnr, table_info, config)
   active_buffers[bufnr] = true
   active_tables[bufnr] = { table_info }
   active_configs[bufnr] = config
+  if config.inline_mode == "replace" then
+    set_render_for_buffer(bufnr, config)
+  end
   return rendered
 end
 
@@ -391,6 +434,9 @@ function M.show_many(bufnr, tables, config)
   active_buffers[bufnr] = #tables > 0
   active_tables[bufnr] = tables
   active_configs[bufnr] = config
+  if config.inline_mode == "replace" then
+    set_render_for_buffer(bufnr, config)
+  end
   return rendered
 end
 
@@ -463,9 +509,24 @@ end
 
 function M.attach_window(bufnr)
   bufnr = normalize_bufnr(bufnr)
-  if active_buffers[bufnr] then
+  if active_buffers[bufnr] and (active_configs[bufnr] or {}).inline_mode == "replace" then
     set_render_for_buffer(bufnr, active_configs[bufnr] or {})
   end
+end
+
+function M.update_wrap_for_cursor(bufnr)
+  bufnr = normalize_bufnr(bufnr)
+  if not active_buffers[bufnr] then
+    return false
+  end
+
+  local config = active_configs[bufnr] or {}
+  if config.inline_mode ~= "replace" then
+    return false
+  end
+
+  set_render_for_buffer(bufnr, config)
+  return true
 end
 
 function M.namespace()

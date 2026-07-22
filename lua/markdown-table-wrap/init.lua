@@ -1,6 +1,6 @@
 local M = {}
 
-M.version = "0.1.4"
+M.version = "0.1.5"
 
 local defaults = {
   max_width_ratio = 0.9,
@@ -25,6 +25,7 @@ local defaults = {
   overlay_fill = true,
   inline_virtual_text = "overlay",
   inline_disable_wrap = true,
+  inline_wrap_scope = "cursor",
   inline_viewport_scrolling = false,
   highlight_preset = "default",
   theme_dir = nil,
@@ -77,6 +78,10 @@ local function validate_config()
   M.config.inline_disable_wrap = M.config.inline_disable_wrap ~= false
   M.config.inline_viewport_scrolling = M.config.inline_viewport_scrolling ~= false
   M.config.map_gx = M.config.map_gx ~= false
+
+  if not vim.tbl_contains({ "always", "cursor", "never" }, M.config.inline_wrap_scope) then
+    M.config.inline_wrap_scope = defaults.inline_wrap_scope
+  end
 
   if type(M.config.extra_filetypes) ~= "table" or #M.config.extra_filetypes == 0 then
     M.config.extra_filetypes = {}
@@ -151,6 +156,7 @@ local function table_signature(bufnr, table_info)
     tostring(M.config.clear_on_visual),
     tostring(M.config.inline_virtual_text),
     tostring(M.config.inline_disable_wrap),
+    tostring(M.config.inline_wrap_scope),
     tostring(M.config.inline_viewport_scrolling),
     table.concat(lines, "\n"),
   }, "\31")
@@ -170,6 +176,7 @@ local function all_tables_signature(bufnr, tables)
     tostring(M.config.clear_on_visual),
     tostring(M.config.inline_virtual_text),
     tostring(M.config.inline_disable_wrap),
+    tostring(M.config.inline_wrap_scope),
     tostring(M.config.overlay_fill),
     tostring(M.config.inline_viewport_scrolling),
   }
@@ -444,6 +451,8 @@ local function create_autocmds()
         return
       end
 
+      require("markdown-table-wrap.inline").update_wrap_for_cursor(args.buf)
+
       if M.config.render_all then
         return
       end
@@ -617,12 +626,13 @@ function M.setup(opts)
     local paused = M.state.paused_buffers[bufnr] == true
     vim.notify(
       string.format(
-        "MarkdownTableWrap: auto=%s paused=%s active=%s mode=%s/%s",
+        "MarkdownTableWrap: auto=%s paused=%s active=%s mode=%s/%s wrap=%s",
         tostring(M.config.auto_preview),
         tostring(paused),
         tostring(active),
         M.config.preview_mode,
-        M.config.inline_mode .. (M.config.inline_viewport_scrolling and "/viewport" or "/full")
+        M.config.inline_mode .. (M.config.inline_viewport_scrolling and "/viewport" or "/full"),
+        M.config.inline_wrap_scope
       ),
       vim.log.levels.INFO
     )

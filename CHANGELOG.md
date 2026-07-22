@@ -2,6 +2,17 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
+## 0.1.5 - Cursor-Scoped Inline Wrapping
+
+### Added
+
+- Add cursor-scoped inline wrapping through `inline_wrap_scope = "cursor"`.
+- Restore ordinary Markdown paragraph wrapping when the cursor leaves an inline table.
+
+### Fixed
+
+- Avoid disabling `wrap` for the entire Markdown window when inline tables are rendered with the default cursor-scoped policy.
+
 ## 0.1.4 - Floating Link Navigation
 
 ### Fixed
