@@ -153,3 +153,30 @@ h.test("render mixed width cells stay within configured width", function()
     end
   end)
 end)
+
+h.test("render can shrink below preferred column width to fit the window", function()
+  local parser = require("markdown-table-wrap.parser")
+  local render = require("markdown-table-wrap.render")
+
+  h.with_buffer({
+    "| A | B | C | D | E | F | G | H |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| alpha beta gamma | one two three | 中文内容很长 | final content | fifth column | sixth column | seventh column | eighth column |",
+  }, function(buf)
+    vim.api.nvim_win_set_width(0, 80)
+    local parsed = parser.parse_at_cursor(buf, 3)
+    local rendered = render.render_table(parsed, {
+      max_width_ratio = 0.9,
+      min_col_width = 8,
+      max_col_width = 50,
+      fit_to_window = true,
+      use_unicode_border = true,
+      table_border = "rounded",
+      row_separator = true,
+    })
+
+    for index, line in ipairs(rendered.lines) do
+      h.assert_true("fit-to-window rendered line " .. index, vim.api.nvim_strwidth(line) <= 72)
+    end
+  end)
+end)

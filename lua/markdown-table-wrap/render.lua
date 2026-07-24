@@ -89,15 +89,22 @@ local function iter_chars_with_pos(text)
   end
 end
 
-local function apply_float_highlights(buf, lines, config)
+local function apply_highlights(buf, lines, config, opts)
+  opts = opts or {}
   ensure_highlights(config)
+  local namespace = opts.namespace or float_namespace
+  local start_row = opts.start_row or 0
+
+  if opts.clear ~= false then
+    vim.api.nvim_buf_clear_namespace(buf, namespace, 0, -1)
+  end
 
   for row, line_obj in ipairs(lines) do
     local line = type(line_obj) == "table" and line_obj.text or line_obj
-    local row_index = row - 1
+    local row_index = start_row + row - 1
     local line_hl = row == 2 and "MarkdownTableWrapHeader" or "MarkdownTableWrapInline"
 
-    vim.api.nvim_buf_set_extmark(buf, float_namespace, row_index, 0, {
+    vim.api.nvim_buf_set_extmark(buf, namespace, row_index, 0, {
       end_row = row_index,
       end_col = #line,
       hl_group = line_hl,
@@ -106,7 +113,7 @@ local function apply_float_highlights(buf, lines, config)
 
     for ch, start_col, end_col in iter_chars_with_pos(line) do
       if render_border_chars[ch] then
-        vim.api.nvim_buf_set_extmark(buf, float_namespace, row_index, start_col, {
+        vim.api.nvim_buf_set_extmark(buf, namespace, row_index, start_col, {
           end_row = row_index,
           end_col = end_col,
           hl_group = "MarkdownTableWrapBorder",
@@ -116,14 +123,19 @@ local function apply_float_highlights(buf, lines, config)
     end
 
     for _, chunk in ipairs(type(line_obj) == "table" and line_obj.chunks or {}) do
-      vim.api.nvim_buf_set_extmark(buf, float_namespace, row_index, chunk.start_col, {
+      local mark = {
         end_row = row_index,
         end_col = chunk.end_col,
         hl_group = chunk.hl_group,
         priority = 30,
-      })
+      }
+      vim.api.nvim_buf_set_extmark(buf, namespace, row_index, chunk.start_col, mark)
     end
   end
+end
+
+function M.apply_highlights(buf, lines, config, opts)
+  apply_highlights(buf, lines, config, opts)
 end
 
 local function text_of(line)
@@ -178,7 +190,7 @@ local function all_rows(table_info)
   return rows
 end
 
-local function natural_widths(table_info)
+local function natural_widths(table_info, config)
   local columns = #table_info.header
   local widths = {}
   local rows = all_rows(table_info)
@@ -186,7 +198,7 @@ local function natural_widths(table_info)
   for col = 1, columns do
     local max_width = 0
     for _, row in ipairs(rows) do
-      max_width = math.max(max_width, width.strwidth(row[col] or ""))
+      max_width = math.max(max_width, width.strwidth(markdown.apply_link_icons(row[col] or "", config)))
     end
     widths[col] = max_width
   end
@@ -210,15 +222,27 @@ local function sum(values)
   return total
 end
 
+local function text_area_width()
+  local winid = vim.api.nvim_get_current_win()
+  local info = vim.fn.getwininfo(winid)[1] or {}
+  return math.max(1, vim.api.nvim_win_get_width(winid) - (info.textoff or 0))
+end
+
 local function distribute_widths(table_info, config)
   local columns = #table_info.header
-  local available = math.max(20, math.floor(vim.api.nvim_win_get_width(0) * config.max_width_ratio))
+  local available = math.max(20, math.floor(text_area_width() * config.max_width_ratio))
   local border_cost = 1 + (columns * 3)
-  local content_budget = math.max(columns * config.min_col_width, available - border_cost)
-  local widths = natural_widths(table_info)
+  local content_budget = math.max(columns, available - border_cost)
+  local effective_min = config.min_col_width
+  if config.fit_to_window ~= false then
+    effective_min = math.max(1, math.min(effective_min, math.floor(content_budget / columns)))
+  else
+    content_budget = math.max(columns * effective_min, content_budget)
+  end
+  local widths = natural_widths(table_info, config)
 
   for index = 1, columns do
-    widths[index] = math.max(config.min_col_width, math.min(widths[index], config.max_col_width))
+    widths[index] = math.max(effective_min, math.min(widths[index], config.max_col_width))
   end
 
   while sum(widths) > content_budget do
@@ -229,7 +253,7 @@ local function distribute_widths(table_info, config)
       end
     end
 
-    if widths[widest_index] <= config.min_col_width then
+    if widths[widest_index] <= effective_min then
       break
     end
 
@@ -312,30 +336,38 @@ function M.render_table(table_info, config)
   local chars = border_chars(config)
   local col_widths = distribute_widths(table_info, config)
   local lines = {}
+  local source_lnums = {}
 
-  table.insert(lines, border_line(chars, chars.top_left, chars.top_join, chars.top_right, col_widths))
-
-  for _, line in ipairs(render_row(table_info.header, col_widths, table_info.align, chars, config)) do
+  local function append(line, source_lnum)
     table.insert(lines, line)
+    table.insert(source_lnums, source_lnum)
   end
 
-  table.insert(lines, border_line(chars, chars.mid_left, chars.mid_join, chars.mid_right, col_widths))
+  append(border_line(chars, chars.top_left, chars.top_join, chars.top_right, col_widths), table_info.start_lnum)
+
+  for _, line in ipairs(render_row(table_info.header, col_widths, table_info.align, chars, config)) do
+    append(line, table_info.start_lnum)
+  end
+
+  append(border_line(chars, chars.mid_left, chars.mid_join, chars.mid_right, col_widths), table_info.separator_lnum)
 
   for row_index, row in ipairs(table_info.rows) do
+    local source_lnum = table_info.separator_lnum + row_index
     for _, line in ipairs(render_row(row, col_widths, table_info.align, chars, config)) do
-      table.insert(lines, line)
+      append(line, source_lnum)
     end
 
     if config.row_separator and row_index < #table_info.rows then
-      table.insert(lines, row_separator_line(chars, col_widths))
+      append(row_separator_line(chars, col_widths), source_lnum)
     end
   end
 
-  table.insert(lines, border_line(chars, chars.bottom_left, chars.bottom_join, chars.bottom_right, col_widths))
+  append(border_line(chars, chars.bottom_left, chars.bottom_join, chars.bottom_right, col_widths), table_info.end_lnum)
 
   return {
     lines = vim.tbl_map(text_of, lines),
     line_objects = lines,
+    source_lnums = source_lnums,
     width = table_width(col_widths),
     height = #lines,
     start_lnum = table_info.start_lnum,
@@ -346,7 +378,7 @@ end
 function M.open_float(rendered, config)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, rendered.lines)
-  apply_float_highlights(buf, rendered.line_objects or rendered.lines, config)
+  apply_highlights(buf, rendered.line_objects or rendered.lines, config)
   vim.bo[buf].buftype = "nofile"
   vim.bo[buf].bufhidden = "wipe"
   vim.bo[buf].swapfile = false

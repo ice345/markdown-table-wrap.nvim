@@ -1,16 +1,17 @@
 local M = {}
 
-M.version = "0.1.5"
+M.version = "0.2.0"
 
 local defaults = {
   max_width_ratio = 0.9,
   min_col_width = 8,
   max_col_width = 50,
+  fit_to_window = true,
   border = "rounded",
   use_unicode_border = true,
   table_border = "rounded",
   row_separator = true,
-  preview_mode = "inline",
+  preview_mode = "reader",
   inline_mode = "replace",
   inline_position = "above",
   dim_source = true,
@@ -27,6 +28,13 @@ local defaults = {
   inline_disable_wrap = true,
   inline_wrap_scope = "cursor",
   inline_viewport_scrolling = false,
+  reader = {
+    wrap = true,
+    linebreak = false,
+    breakindent = true,
+    conceallevel = 2,
+    concealcursor = "nvc",
+  },
   highlight_preset = "default",
   theme_dir = nil,
   themes = {},
@@ -61,6 +69,10 @@ M.state = {
 }
 
 local function is_markdown_buffer()
+  if vim.b.markdown_table_wrap_reader == true then
+    return false
+  end
+
   local ft = vim.bo.filetype
   local extra = M.config.extra_filetypes or {}
   return ft == "markdown" or ft == "md" or ft == "quarto" or ft == "rmarkdown" or vim.tbl_contains(extra, ft)
@@ -74,6 +86,7 @@ local function validate_config()
   M.config.overlay_priority = math.max(1, tonumber(M.config.overlay_priority) or defaults.overlay_priority)
   M.config.render_all = M.config.render_all ~= false
   M.config.overlay_fill = M.config.overlay_fill ~= false
+  M.config.fit_to_window = M.config.fit_to_window ~= false
   M.config.clear_on_visual = M.config.clear_on_visual ~= false
   M.config.inline_disable_wrap = M.config.inline_disable_wrap ~= false
   M.config.inline_viewport_scrolling = M.config.inline_viewport_scrolling ~= false
@@ -102,7 +115,7 @@ local function validate_config()
     M.config.inline_virtual_text = defaults.inline_virtual_text
   end
 
-  if M.config.preview_mode ~= "inline" and M.config.preview_mode ~= "float" then
+  if M.config.preview_mode ~= "inline" and M.config.preview_mode ~= "float" and M.config.preview_mode ~= "reader" then
     M.config.preview_mode = defaults.preview_mode
   end
 
@@ -190,6 +203,11 @@ local function all_tables_signature(bufnr, tables)
 end
 
 function M.close_preview()
+  if require("markdown-table-wrap.reader").is_reader(0) then
+    M.close_reader()
+    return
+  end
+
   close_existing()
   local bufnr = M.state.inline_buf or vim.api.nvim_get_current_buf()
   require("markdown-table-wrap.inline").clear(bufnr)
@@ -238,6 +256,66 @@ function M.inline_preview()
   M.state.inline_buf = bufnr
 end
 
+function M.reader_preview(opts)
+  opts = opts or {}
+  local bufnr = vim.api.nvim_get_current_buf()
+  local reader = require("markdown-table-wrap.reader")
+
+  if reader.is_reader(bufnr) then
+    return bufnr
+  end
+
+  if not is_markdown_buffer() then
+    if not opts.silent then
+      vim.notify("MarkdownTableWrap: reader mode is only available in Markdown buffers.", vim.log.levels.INFO)
+    end
+    return nil
+  end
+
+  close_existing()
+  require("markdown-table-wrap.inline").clear(bufnr)
+  M.state.inline_buf = nil
+  M.state.last_signature[bufnr] = nil
+  M.state.paused_buffers[bufnr] = nil
+  return reader.open(bufnr, M.config)
+end
+
+function M.pause_buffer(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  M.state.paused_buffers[bufnr] = true
+  M.state.last_signature[bufnr] = nil
+end
+
+function M.close_reader()
+  local reader = require("markdown-table-wrap.reader")
+  local bufnr = vim.api.nvim_get_current_buf()
+  if not reader.is_reader(bufnr) then
+    return false
+  end
+
+  local source_bufnr = reader.close(bufnr)
+  if source_bufnr then
+    M.pause_buffer(source_bufnr)
+    return true
+  end
+  return false
+end
+
+function M.toggle_reader()
+  if require("markdown-table-wrap.reader").is_reader(0) then
+    return M.close_reader()
+  end
+  return M.reader_preview()
+end
+
+function M.edit_source()
+  local reader = require("markdown-table-wrap.reader")
+  if not reader.is_reader(0) then
+    return false
+  end
+  return reader.edit(0, nil, true)
+end
+
 function M.float_preview()
   local bufnr, table_info = table_under_cursor()
   if not bufnr then
@@ -256,6 +334,11 @@ end
 function M.preview()
   if M.config.preview_mode == "float" then
     M.float_preview()
+    return
+  end
+
+  if M.config.preview_mode == "reader" then
+    M.reader_preview()
     return
   end
 
@@ -285,6 +368,15 @@ function M.refresh_auto(opts)
     inline.clear(bufnr)
     M.state.inline_buf = nil
     M.state.last_signature[bufnr] = nil
+    return
+  end
+
+  if mode:match("^[vV\22]") then
+    return
+  end
+
+  if M.config.preview_mode == "reader" then
+    M.reader_preview({ silent = true })
     return
   end
 
@@ -357,6 +449,11 @@ function M.schedule_refresh(opts)
 end
 
 function M.toggle_preview()
+  if require("markdown-table-wrap.reader").is_reader(0) then
+    M.close_reader()
+    return
+  end
+
   if M.state.win and vim.api.nvim_win_is_valid(M.state.win) then
     close_existing()
     return
@@ -383,6 +480,11 @@ function M.enable_auto_preview()
 end
 
 function M.disable_auto_preview()
+  if require("markdown-table-wrap.reader").is_reader(0) then
+    M.close_reader()
+    return
+  end
+
   local bufnr = vim.api.nvim_get_current_buf()
   M.state.paused_buffers[bufnr] = true
   require("markdown-table-wrap.inline").clear(bufnr)
@@ -462,10 +564,18 @@ local function create_autocmds()
   })
 
   vim.api.nvim_create_autocmd(
-    { "TextChanged", "TextChangedI", "InsertLeave", "BufWinEnter", "WinScrolled", "VimResized" },
+    { "TextChanged", "TextChangedI", "InsertLeave", "BufWinEnter", "WinScrolled", "WinResized", "VimResized" },
     {
       group = M.state.augroup,
-      callback = function()
+      callback = function(args)
+        local bufnr = vim.api.nvim_get_current_buf()
+        if require("markdown-table-wrap.reader").is_reader(bufnr) then
+          if args.event == "WinResized" or args.event == "VimResized" then
+            require("markdown-table-wrap.reader").refresh(bufnr)
+          end
+          return
+        end
+
         if not is_markdown_buffer() then
           return
         end
@@ -542,6 +652,7 @@ local function create_autocmds()
   vim.api.nvim_create_autocmd("BufWipeout", {
     group = M.state.augroup,
     callback = function(args)
+      require("markdown-table-wrap.reader").cleanup(args.buf)
       M.state.paused_buffers[args.buf] = nil
       M.state.last_signature[args.buf] = nil
       M.state.visual_buffers[args.buf] = nil
@@ -555,6 +666,10 @@ local function create_autocmds()
     group = M.state.augroup,
     pattern = "*",
     callback = function(args)
+      if vim.b[args.buf].markdown_table_wrap_reader == true then
+        return
+      end
+
       local fts = { "markdown", "md", "quarto", "rmarkdown" }
       vim.list_extend(fts, M.config.extra_filetypes or {})
       if not vim.tbl_contains(fts, vim.bo[args.buf].filetype) then
@@ -596,6 +711,18 @@ function M.setup(opts)
     M.float_preview()
   end, { desc = "Floating preview the Markdown pipe table under the cursor with wrapped cells", force = true })
 
+  vim.api.nvim_create_user_command("MarkdownTableReader", function()
+    M.reader_preview()
+  end, { desc = "Open the current Markdown buffer in the rendered reader", force = true })
+
+  vim.api.nvim_create_user_command("MarkdownTableToggleReader", function()
+    M.toggle_reader()
+  end, { desc = "Toggle the rendered Markdown reader", force = true })
+
+  vim.api.nvim_create_user_command("MarkdownTableEditSource", function()
+    M.edit_source()
+  end, { desc = "Leave the rendered reader and edit the Markdown source", force = true })
+
   vim.api.nvim_create_user_command("MarkdownTableTogglePreview", function()
     M.toggle_preview()
   end, { desc = "Toggle wrapped Markdown table preview", force = true })
@@ -622,14 +749,17 @@ function M.setup(opts)
 
   vim.api.nvim_create_user_command("MarkdownTableStatus", function()
     local bufnr = vim.api.nvim_get_current_buf()
+    local reader_active = require("markdown-table-wrap.reader").is_reader(bufnr)
     local active = require("markdown-table-wrap.inline").is_active(bufnr)
-    local paused = M.state.paused_buffers[bufnr] == true
+    local source_bufnr = reader_active and require("markdown-table-wrap.reader").source_bufnr(bufnr) or bufnr
+    local paused = M.state.paused_buffers[source_bufnr] == true
     vim.notify(
       string.format(
-        "MarkdownTableWrap: auto=%s paused=%s active=%s mode=%s/%s wrap=%s",
+        "MarkdownTableWrap: auto=%s paused=%s active=%s reader=%s mode=%s/%s wrap=%s",
         tostring(M.config.auto_preview),
         tostring(paused),
         tostring(active),
+        tostring(reader_active),
         M.config.preview_mode,
         M.config.inline_mode .. (M.config.inline_viewport_scrolling and "/viewport" or "/full"),
         M.config.inline_wrap_scope

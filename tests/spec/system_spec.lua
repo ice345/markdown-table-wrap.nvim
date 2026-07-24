@@ -5,6 +5,7 @@ h.test("system render chain only conceals detected table range", function()
   local inline = require("markdown-table-wrap.inline")
 
   plugin.setup({
+    preview_mode = "inline",
     debounce_ms = 0,
     render_all = true,
     auto_preview = true,
@@ -83,6 +84,7 @@ h.test("extra_filetypes renders in configured filetype", function()
   local inline = require("markdown-table-wrap.inline")
 
   plugin.setup({
+    preview_mode = "inline",
     debounce_ms = 0,
     render_all = true,
     auto_preview = true,
@@ -113,6 +115,7 @@ h.test("non-configured filetypes are ignored", function()
   local inline = require("markdown-table-wrap.inline")
 
   plugin.setup({
+    preview_mode = "inline",
     debounce_ms = 0,
     render_all = true,
     auto_preview = true,

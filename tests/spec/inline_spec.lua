@@ -5,6 +5,7 @@ h.test("inline whole-buffer render uses extmarks and conceal options", function(
   local inline = require("markdown-table-wrap.inline")
 
   plugin.setup({
+    preview_mode = "inline",
     debounce_ms = 0,
     render_all = true,
     auto_preview = true,
@@ -44,6 +45,7 @@ h.test("cursor wrap scope preserves prose wrapping outside tables", function()
   local inline = require("markdown-table-wrap.inline")
 
   plugin.setup({
+    preview_mode = "inline",
     debounce_ms = 0,
     render_all = true,
     auto_preview = true,
@@ -160,6 +162,7 @@ h.test("floating preview preserves inline rendering in render_all mode", functio
   local inline = require("markdown-table-wrap.inline")
 
   plugin.setup({
+    preview_mode = "inline",
     debounce_ms = 0,
     render_all = true,
     auto_preview = true,
@@ -191,6 +194,7 @@ h.test("inline viewport scroll changes rendered table slice", function()
   local inline = require("markdown-table-wrap.inline")
 
   plugin.setup({
+    preview_mode = "inline",
     debounce_ms = 0,
     render_all = true,
     auto_preview = true,
@@ -261,6 +265,7 @@ h.test("inline replace can use overlay or fixed window column virtual text", fun
     vim.bo[buf].filetype = "markdown"
 
     plugin.setup({
+      preview_mode = "inline",
       debounce_ms = 0,
       render_all = true,
       auto_preview = true,
@@ -274,6 +279,7 @@ h.test("inline replace can use overlay or fixed window column virtual text", fun
 
     inline.clear(buf)
     plugin.setup({
+      preview_mode = "inline",
       debounce_ms = 0,
       render_all = true,
       auto_preview = true,
@@ -294,6 +300,7 @@ h.test("inline viewport toggle switches between sliced and full rendering", func
   local inline = require("markdown-table-wrap.inline")
 
   plugin.setup({
+    preview_mode = "inline",
     debounce_ms = 0,
     render_all = true,
     auto_preview = true,
@@ -339,6 +346,7 @@ h.test("extra inline virtual lines keep their original rendered line index", fun
   local inline = require("markdown-table-wrap.inline")
 
   plugin.setup({
+    preview_mode = "inline",
     debounce_ms = 0,
     render_all = true,
     auto_preview = true,

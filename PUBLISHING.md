@@ -110,11 +110,11 @@ Users update it through their plugin manager:
 :Lazy update markdown-table-wrap.nvim
 ```
 
-For future bug-fix releases:
+For future releases:
 
 ```sh
-git tag -a v0.1.2 -m "markdown-table-wrap.nvim v0.1.2"
-git push origin v0.1.2
+git tag -a v0.2.1 -m "markdown-table-wrap.nvim v0.2.1"
+git push origin v0.2.1
 ```
 
 Then draft a new GitHub release from that tag.
@@ -128,6 +128,11 @@ Use this before tagging a public release.
 - Verify the README install snippet with your current plugin manager setup.
 - Verify coexistence with `render-markdown.nvim` and `pipe_table.enabled = false`.
 - Verify inline rendering in Normal mode.
+- Verify the default full-document Reader opens automatically without cursor focus.
+- Verify Reader is read-only while Visual selection and yank stay inside Reader.
+- Verify `i`, `a`, `o`, and related Insert commands return to the mapped source line.
+- Verify Reader reopens after `InsertLeave` and after leaving Visual mode.
+- Verify `:MarkdownTableToggleReader` and `:MarkdownTableEditSource` state transitions.
 - Verify inline viewport scrolling with `:MarkdownTableScrollDown` and `:MarkdownTableScrollUp`.
 - Verify inline viewport/full toggle with `:MarkdownTableToggleInlineViewport`.
 - Verify viewport top/bottom jumps with `:MarkdownTableScrollTop` and `:MarkdownTableScrollBottom`.
@@ -141,18 +146,23 @@ Use this before tagging a public release.
 
 ## 8. Release Notes Draft
 
-### markdown-table-wrap.nvim v0.1.2
+### markdown-table-wrap.nvim v0.2.0
 
-This release focuses on setup behavior and first-run usability.
+This release introduces a stable full-document Reader for Markdown tables.
 
 Highlights:
 
-- Fixes a setup lifecycle issue where manual `require("markdown-table-wrap").setup({...})` calls could be overridden later when `plugin/markdown-table-wrap.lua` was sourced, which affected package manager setups such as `vim.pack`.
-- Changes the default `highlight_preset` to `default`, so the plugin follows standard Neovim highlight groups and fits arbitrary colorschemes more naturally out of the box.
-- Changes the default `inline_viewport_scrolling` to `false`, so the full rendered table is visible inline on first use instead of appearing partially rendered.
-- Improves the README and help text to explain viewport mode much earlier and more explicitly.
+- Adds `preview_mode = "reader"`, which renders every Markdown table without requiring cursor focus.
+- Uses real Unicode buffer lines for rendered tables, avoiding raw pipe leakage when ordinary Markdown `wrap` is enabled.
+- Keeps the Markdown source buffer untouched and read-only only in Reader mode.
+- Allows Visual selection and yank directly from rendered table lines while keeping Reader active.
+- Returns to the mapped source line for `i`, `a`, `I`, `A`, `o`, and `O`, then reopens Reader after editing.
+- Adds `:MarkdownTableReader`, `:MarkdownTableToggleReader`, and `:MarkdownTableEditSource`.
+- Adds `fit_to_window = true` and accounts for the window text offset when allocating columns.
+- Preserves inline and floating modes for users who prefer source-position-preserving overlays or focused previews.
+- Adds Reader lifecycle, width, link, and unsaved-buffer regression tests.
 
 Known limitations:
 
-- Extra wrapped rows still use `virt_lines`, so they are visual rows rather than real cursor-addressable buffer lines.
+- Inline mode still uses virtual text and virtual lines, so Reader mode is recommended when native prose wrapping and stable table rendering are both required.
 - The plugin remains focused on Markdown pipe tables and does not replace general Markdown rendering.

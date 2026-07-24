@@ -2,6 +2,31 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
+## 0.2.0 - Full-Document Reader
+
+### Added
+
+- Add a full-document reader mode with `preview_mode = "reader"`.
+- Replace pipe tables with real Unicode buffer lines in reader mode while leaving the source Markdown buffer unchanged.
+- Add `:MarkdownTableReader`, `:MarkdownTableToggleReader`, and `:MarkdownTableEditSource`.
+- Preserve native wrapping for non-table Markdown in reader mode.
+- Support direct source editing, Visual selection, and rendered-link `gx` navigation from the reader.
+- Add `fit_to_window = true` so many-column tables may shrink below the preferred column width when required to fit the text area.
+
+### Changed
+
+- Make Reader the default preview mode so every table is rendered without cursor focus.
+- Keep Visual selection inside Reader so copying uses real rendered lines and remains in Reader after yank.
+
+### Fixed
+
+- Avoid raw source pipes leaking from soft-wrapped Markdown table rows by using real rendered lines in reader mode.
+- Account for the window text offset, including number, sign, and fold columns, when calculating rendered table width.
+
+### Notes
+
+- Inline mode remains available for source-position-preserving overlays. Reader mode is recommended when native prose wrapping and stable always-visible tables are both required.
+
 ## 0.1.5 - Cursor-Scoped Inline Wrapping
 
 ### Added
