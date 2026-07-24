@@ -18,6 +18,7 @@
 :MarkdownTableScrollUp	markdown-table-wrap.txt	/*:MarkdownTableScrollUp*
 :MarkdownTableStatus	markdown-table-wrap.txt	/*:MarkdownTableStatus*
 :MarkdownTableToggleAutoPreview	markdown-table-wrap.txt	/*:MarkdownTableToggleAutoPreview*
+:MarkdownTableToggleInline	markdown-table-wrap.txt	/*:MarkdownTableToggleInline*
 :MarkdownTableToggleInlineViewport	markdown-table-wrap.txt	/*:MarkdownTableToggleInlineViewport*
 :MarkdownTableTogglePreview	markdown-table-wrap.txt	/*:MarkdownTableTogglePreview*
 :MarkdownTableToggleReader	markdown-table-wrap.txt	/*:MarkdownTableToggleReader*
@@ -29,4 +30,5 @@ markdown-table-wrap-installation	markdown-table-wrap.txt	/*markdown-table-wrap-i
 markdown-table-wrap-limitations	markdown-table-wrap.txt	/*markdown-table-wrap-limitations*
 markdown-table-wrap-overview	markdown-table-wrap.txt	/*markdown-table-wrap-overview*
 markdown-table-wrap-render-markdown	markdown-table-wrap.txt	/*markdown-table-wrap-render-markdown*
+markdown-table-wrap-view-choice	markdown-table-wrap.txt	/*markdown-table-wrap-view-choice*
 markdown-table-wrap.txt	markdown-table-wrap.txt	/*markdown-table-wrap.txt*

@@ -129,10 +129,12 @@ Use this before tagging a public release.
 - Verify coexistence with `render-markdown.nvim` and `pipe_table.enabled = false`.
 - Verify inline rendering in Normal mode.
 - Verify the default full-document Reader opens automatically without cursor focus.
-- Verify Reader is read-only while Visual selection and yank stay inside Reader.
+- Verify Reader prevents direct text edits while Visual selection and yank stay inside Reader.
 - Verify `i`, `a`, `o`, and related Insert commands return to the mapped source line.
 - Verify Reader reopens after `InsertLeave` and after leaving Visual mode.
 - Verify `:MarkdownTableToggleReader` and `:MarkdownTableEditSource` state transitions.
+- Verify `:MarkdownTableToggleInline` switches Reader/Source into Inline and back to Source.
+- Verify `:w`, `:wq`, `:x`, and `ZZ` from Reader save the backing Markdown file.
 - Verify inline viewport scrolling with `:MarkdownTableScrollDown` and `:MarkdownTableScrollUp`.
 - Verify inline viewport/full toggle with `:MarkdownTableToggleInlineViewport`.
 - Verify viewport top/bottom jumps with `:MarkdownTableScrollTop` and `:MarkdownTableScrollBottom`.
@@ -145,6 +147,31 @@ Use this before tagging a public release.
 - Verify inline token styles: code, bold, italic, strikethrough, and link.
 
 ## 8. Release Notes Draft
+
+### markdown-table-wrap.nvim v0.2.1
+
+This release makes the Reader workflow more natural for daily Markdown writing
+and strengthens the release regression suite.
+
+Highlights:
+
+- Reader now forwards `:w`, `:wq`, `:x`, and `ZZ` to the backing Markdown
+  buffer, so saving does not require manually returning to Source.
+- Adds `:MarkdownTableToggleInline` for switching from Reader or Source into
+  an editable inline table view.
+- Avoids rendering table-shaped examples inside fenced code blocks.
+- Fixes cell navigation for double-backtick inline code containing pipes.
+- Makes table-aware `gx` available when LazyVim loads the plugin after a
+  Markdown buffer's FileType event.
+- Validates malformed nested configuration values before rendering.
+- Expands the test suite and CI coverage to Neovim v0.10.4 and stable.
+
+Known limitations:
+
+- Inline mode remains dependent on terminal/compositor/extmark behavior. Use
+  Reader for the most stable view when native prose wrapping is enabled.
+- The plugin focuses on pipe tables; it does not replace general Markdown
+  rendering provided by render-markdown.nvim.
 
 ### markdown-table-wrap.nvim v0.2.0
 

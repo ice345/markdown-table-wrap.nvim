@@ -129,7 +129,9 @@ local function create_reader_buffer(source_bufnr)
   local reader_bufnr = vim.api.nvim_create_buf(false, true)
   vim.b[reader_bufnr].markdown_table_wrap_reader = true
   vim.b[reader_bufnr].markdown_table_wrap_source = source_bufnr
-  vim.bo[reader_bufnr].buftype = "nofile"
+  -- acwrite lets :write save the backing Markdown buffer while modifiable=false
+  -- continues to protect the rendered view from direct edits.
+  vim.bo[reader_bufnr].buftype = "acwrite"
   vim.bo[reader_bufnr].bufhidden = "wipe"
   vim.bo[reader_bufnr].swapfile = false
   vim.bo[reader_bufnr].undofile = false
@@ -143,6 +145,22 @@ local function create_reader_buffer(source_bufnr)
 
   vim.bo[reader_bufnr].filetype = vim.bo[source_bufnr].filetype
   set_reader_keymaps(reader_bufnr)
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    buffer = reader_bufnr,
+    once = true,
+    callback = function()
+      require("markdown-table-wrap.reader").cleanup(reader_bufnr)
+    end,
+  })
+  vim.api.nvim_create_autocmd("BufWriteCmd", {
+    buffer = reader_bufnr,
+    callback = function()
+      local ok, err = require("markdown-table-wrap.reader").write(reader_bufnr)
+      if not ok then
+        error("MarkdownTableWrap: could not save source Markdown: " .. tostring(err))
+      end
+    end,
+  })
   return reader_bufnr
 end
 
@@ -192,7 +210,8 @@ function M.open(source_bufnr, config)
   vim.api.nvim_buf_set_lines(reader_bufnr, 0, -1, false, built.lines)
   apply_table_highlights(reader_bufnr, built, config)
   vim.bo[reader_bufnr].modifiable = false
-  vim.bo[reader_bufnr].readonly = true
+  vim.bo[reader_bufnr].readonly = false
+  vim.bo[reader_bufnr].modified = vim.bo[source_bufnr].modified
 
   states[reader_bufnr] = vim.tbl_extend("force", built, {
     source_bufnr = source_bufnr,
@@ -228,6 +247,9 @@ function M.close(reader_bufnr)
   local winid = vim.api.nvim_get_current_win()
   local reader_cursor = vim.api.nvim_win_get_cursor(winid)
   local source_lnum, source_col = source_cursor_for(state, reader_cursor[1], reader_cursor[2])
+  -- The Reader mirrors source's modified flag so :x and ZZ save correctly.
+  -- Clear only the disposable mirror before switching away from this view.
+  vim.bo[reader_bufnr].modified = false
   vim.api.nvim_win_set_buf(winid, state.source_bufnr)
   vim.bo[state.source_bufnr].bufhidden = state.source_bufhidden or ""
 
@@ -263,6 +285,30 @@ function M.edit(reader_bufnr, keys, pause)
   return true
 end
 
+function M.write(reader_bufnr)
+  reader_bufnr = normalize_bufnr(reader_bufnr)
+  local state = states[reader_bufnr]
+  if not state or not vim.api.nvim_buf_is_valid(state.source_bufnr) then
+    return false, "the backing source buffer is no longer available"
+  end
+
+  if vim.api.nvim_buf_get_name(state.source_bufnr) == "" then
+    return false, "the source buffer has no file name; use :w {path} after entering source mode"
+  end
+
+  local ok, err = pcall(vim.api.nvim_buf_call, state.source_bufnr, function()
+    vim.cmd("write")
+  end)
+  if not ok then
+    return false, err
+  end
+
+  if vim.api.nvim_buf_is_valid(reader_bufnr) and states[reader_bufnr] then
+    M.refresh(reader_bufnr)
+  end
+  return true
+end
+
 function M.refresh(reader_bufnr)
   reader_bufnr = normalize_bufnr(reader_bufnr)
   local state = states[reader_bufnr]
@@ -282,12 +328,12 @@ function M.refresh(reader_bufnr)
     return build(state.source_bufnr, state.config)
   end)
 
-  vim.bo[reader_bufnr].readonly = false
   vim.bo[reader_bufnr].modifiable = true
   vim.api.nvim_buf_set_lines(reader_bufnr, 0, -1, false, built.lines)
   apply_table_highlights(reader_bufnr, built, state.config)
   vim.bo[reader_bufnr].modifiable = false
-  vim.bo[reader_bufnr].readonly = true
+  vim.bo[reader_bufnr].readonly = false
+  vim.bo[reader_bufnr].modified = vim.bo[state.source_bufnr].modified
 
   for key, value in pairs(built) do
     state[key] = value
@@ -331,6 +377,10 @@ function M.open_link(reader_bufnr)
 end
 
 function M.cleanup(reader_bufnr)
+  local state = states[reader_bufnr]
+  if state and vim.api.nvim_buf_is_valid(state.source_bufnr) then
+    vim.bo[state.source_bufnr].bufhidden = state.source_bufhidden or ""
+  end
   states[reader_bufnr] = nil
 end
 

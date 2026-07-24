@@ -19,6 +19,10 @@ Format Lua before opening a pull request:
 stylua .
 ```
 
+Read [tests/README.md](tests/README.md) before adding a feature: it maps the
+test layers and lists terminal-specific release checks that headless CI cannot
+cover.
+
 ## Pull Requests
 
 - Keep changes focused on Markdown table rendering unless the issue explicitly asks for broader Markdown behavior.
@@ -33,4 +37,3 @@ stylua .
 - Verify rendered tables return in Normal mode.
 - Verify `render-markdown.nvim` table rendering is disabled when testing coexistence.
 - Run `:checkhealth markdown-table-wrap`.
-

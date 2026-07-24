@@ -10,6 +10,10 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        neovim: [v0.10.4, stable]
     steps:
       - uses: actions/checkout@v6
 
@@ -23,7 +27,7 @@ jobs:
       - uses: rhysd/action-setup-vim@v1
         with:
           neovim: true
-          version: stable
+          version: ${{ matrix.neovim }}
 
       - name: Run headless tests
         run: |

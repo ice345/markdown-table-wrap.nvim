@@ -158,3 +158,34 @@ h.test("parser finds all tables", function()
     h.assert_eq("second table start", tables[2].start_lnum, 7)
   end)
 end)
+
+h.test("parser ignores table-shaped text inside fenced code blocks", function()
+  local parser = require("markdown-table-wrap.parser")
+
+  h.with_buffer({
+    "```lua",
+    "| Example | Value |",
+    "| --- | --- |",
+    "| one | two |",
+    "```",
+    "",
+    "~~~markdown",
+    "| Also | Code |",
+    "| --- | --- |",
+    "| three | four |",
+    "~~~",
+    "",
+    "| Real | Table |",
+    "| --- | --- |",
+    "| yes | rendered |",
+  }, function(buf)
+    local first, message = parser.parse_at_cursor(buf, 3)
+    h.assert_false("backtick fenced table is ignored", first)
+    h.assert_true("fenced error explains boundary", message:find("fenced code block", 1, true) ~= nil)
+    h.assert_false("tilde fenced table is ignored", parser.parse_at_cursor(buf, 9))
+
+    local tables = parser.parse_all(buf)
+    h.assert_eq("only real table is collected", #tables, 1)
+    h.assert_eq("real table starts after fences", tables[1].start_lnum, 13)
+  end)
+end)

@@ -2,6 +2,26 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
+## 0.2.1 - Reader Workflow And Regression Coverage
+
+### Added
+
+- Add coverage for Reader refresh and save forwarding, configuration validation,
+  navigation, fitting behavior, wrapping metadata, and lazy-loading timing.
+- Test the supported Neovim 0.10 baseline and stable Neovim in GitHub Actions.
+- Add `tests/README.md` with the automated coverage map and release-only manual
+  checks for terminal, compositor, and extmark interactions.
+- Add `:MarkdownTableToggleInline` for switching from Reader or Source to an
+  editable inline rendering layer.
+
+### Fixed
+
+- Ignore table-shaped text inside backtick- and tilde-fenced code blocks.
+- Keep cell navigation correct when double-backtick inline code contains pipes.
+- Install the table-aware `gx` mapping when a supported buffer existed before
+  plugin setup, including filetype-based lazy-loading flows.
+- Validate malformed nested configuration values before they reach rendering.
+
 ## 0.2.0 - Full-Document Reader
 
 ### Added

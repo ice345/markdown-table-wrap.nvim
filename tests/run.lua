@@ -14,8 +14,11 @@ local specs = {
   "tests.spec.wrap_spec",
   "tests.spec.render_spec",
   "tests.spec.theme_spec",
+  "tests.spec.config_spec",
   "tests.spec.inline_spec",
   "tests.spec.reader_spec",
+  "tests.spec.nav_spec",
+  "tests.spec.mode_spec",
   "tests.spec.system_spec",
 }
 

@@ -203,6 +203,139 @@ h.test("reader source editing restores the mapped source line", function()
   end)
 end)
 
+h.test("reader :write saves the backing Markdown source", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  local path = vim.fn.tempname() .. ".md"
+
+  plugin.setup({ auto_preview = false, preview_mode = "reader" })
+
+  h.with_buffer({
+    "# Notes",
+    "",
+    "| A | B |",
+    "| --- | --- |",
+    "| one | two |",
+  }, function(source_bufnr)
+    vim.bo[source_bufnr].buftype = ""
+    vim.bo[source_bufnr].filetype = "markdown"
+    vim.api.nvim_buf_set_name(source_bufnr, path)
+    vim.bo[source_bufnr].modified = true
+
+    local reader_bufnr = plugin.reader_preview()
+    h.assert_true("reader buffer is active before write", reader.is_reader(reader_bufnr))
+    h.assert_true("reader mirrors unsaved source state", vim.bo[reader_bufnr].modified)
+    vim.cmd("write")
+
+    h.assert_true("reader remains active after write", reader.is_reader(vim.api.nvim_get_current_buf()))
+    h.assert_false("reader no longer mirrors a modified source", vim.bo[reader_bufnr].modified)
+    h.assert_false("source is no longer modified", vim.bo[source_bufnr].modified)
+    h.assert_true(
+      "source Markdown was written",
+      vim.deep_equal(vim.fn.readfile(path), {
+        "# Notes",
+        "",
+        "| A | B |",
+        "| --- | --- |",
+        "| one | two |",
+      })
+    )
+
+    plugin.close_reader()
+    plugin.state.paused_buffers[source_bufnr] = nil
+  end)
+
+  vim.fn.delete(path)
+end)
+
+h.test("reader :x writes unsaved source changes before closing", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  local path = vim.fn.tempname() .. ".md"
+
+  plugin.setup({ auto_preview = false, preview_mode = "reader" })
+
+  h.with_buffer({ "# Unsaved source" }, function(source_bufnr)
+    vim.bo[source_bufnr].buftype = ""
+    vim.bo[source_bufnr].filetype = "markdown"
+    vim.api.nvim_buf_set_name(source_bufnr, path)
+    vim.bo[source_bufnr].modified = true
+    local source_bufhidden = vim.bo[source_bufnr].bufhidden
+    vim.cmd("vsplit")
+
+    local reader_bufnr = plugin.reader_preview()
+    h.assert_true("reader tracks unsaved source before :x", vim.bo[reader_bufnr].modified)
+    vim.cmd("x")
+
+    h.assert_false("reader is gone after :x", reader.is_reader(reader_bufnr))
+    h.assert_eq("source buffer remains visible", vim.api.nvim_get_current_buf(), source_bufnr)
+    h.assert_false("source is saved by :x", vim.bo[source_bufnr].modified)
+    h.assert_eq("source bufhidden is restored after :x", vim.bo[source_bufnr].bufhidden, source_bufhidden)
+    h.assert_true("source was written by :x", vim.deep_equal(vim.fn.readfile(path), { "# Unsaved source" }))
+  end)
+
+  vim.fn.delete(path)
+end)
+
+h.test("reader refreshes all rendered tables after source changes", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+
+  plugin.setup({ auto_preview = false, preview_mode = "reader" })
+
+  h.with_buffer({
+    "Before",
+    "| A | B |",
+    "| --- | --- |",
+    "| old | first |",
+    "",
+    "| C | D |",
+    "| --- | --- |",
+    "| second | unchanged |",
+    "After",
+  }, function(source_bufnr)
+    vim.bo[source_bufnr].filetype = "markdown"
+    local reader_bufnr = plugin.reader_preview()
+
+    vim.api.nvim_buf_set_lines(source_bufnr, 3, 4, false, { "| updated value | first |" })
+    h.assert_true("reader refresh succeeds", reader.refresh(reader_bufnr))
+
+    local rendered = table.concat(vim.api.nvim_buf_get_lines(reader_bufnr, 0, -1, false), "\n")
+    local top_borders = select(2, rendered:gsub("╭", ""))
+    h.assert_true("reader includes changed source text", rendered:find("updated", 1, true) ~= nil)
+    h.assert_false("reader drops stale source text", rendered:find("old", 1, true) ~= nil)
+    h.assert_eq("reader still renders every table", top_borders, 2)
+    h.assert_eq(
+      "source is not rewritten by refresh",
+      vim.api.nvim_buf_get_lines(source_bufnr, 3, 4, false)[1],
+      "| updated value | first |"
+    )
+
+    plugin.close_reader()
+    plugin.state.paused_buffers[source_bufnr] = nil
+  end)
+end)
+
+h.test("reader reports a useful save error for unnamed source buffers", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+
+  plugin.setup({ auto_preview = false, preview_mode = "reader" })
+
+  h.with_buffer({ "| A | B |", "| --- | --- |", "| one | two |" }, function(source_bufnr)
+    vim.bo[source_bufnr].filetype = "markdown"
+    local reader_bufnr = plugin.reader_preview()
+    local ok, err = reader.write(reader_bufnr)
+
+    h.assert_false("unnamed reader save fails safely", ok)
+    h.assert_true("unnamed reader save explains next step", err:find("no file name", 1, true) ~= nil)
+    h.assert_true("reader stays visible after failed save", reader.is_reader(vim.api.nvim_get_current_buf()))
+
+    plugin.close_reader()
+    plugin.state.paused_buffers[source_bufnr] = nil
+  end)
+end)
+
 h.test("reader safely hides an unsaved source when hidden is disabled", function()
   local plugin = require("markdown-table-wrap")
 

@@ -1,6 +1,6 @@
 local M = {}
 
-M.version = "0.2.0"
+M.version = "0.2.1"
 
 local defaults = {
   max_width_ratio = 0.9,
@@ -68,14 +68,22 @@ M.state = {
   visual_buffers = {},
 }
 
+local function configured_filetypes()
+  local filetypes = { "markdown", "md", "quarto", "rmarkdown" }
+  vim.list_extend(filetypes, M.config.extra_filetypes or {})
+  return filetypes
+end
+
+local function is_supported_filetype(filetype)
+  return vim.tbl_contains(configured_filetypes(), filetype)
+end
+
 local function is_markdown_buffer()
   if vim.b.markdown_table_wrap_reader == true then
     return false
   end
 
-  local ft = vim.bo.filetype
-  local extra = M.config.extra_filetypes or {}
-  return ft == "markdown" or ft == "md" or ft == "quarto" or ft == "rmarkdown" or vim.tbl_contains(extra, ft)
+  return is_supported_filetype(vim.bo.filetype)
 end
 
 local function validate_config()
@@ -84,6 +92,7 @@ local function validate_config()
   M.config.max_col_width = math.max(M.config.min_col_width, tonumber(M.config.max_col_width) or defaults.max_col_width)
   M.config.debounce_ms = math.max(0, tonumber(M.config.debounce_ms) or defaults.debounce_ms)
   M.config.overlay_priority = math.max(1, tonumber(M.config.overlay_priority) or defaults.overlay_priority)
+  M.config.max_width_ratio = math.max(0.1, math.min(1, M.config.max_width_ratio))
   M.config.render_all = M.config.render_all ~= false
   M.config.overlay_fill = M.config.overlay_fill ~= false
   M.config.fit_to_window = M.config.fit_to_window ~= false
@@ -109,6 +118,32 @@ local function validate_config()
     if not valid then
       M.config.extra_filetypes = {}
     end
+  end
+
+  if type(M.config.reader) ~= "table" then
+    M.config.reader = vim.deepcopy(defaults.reader)
+  end
+
+  if type(M.config.themes) ~= "table" then
+    M.config.themes = {}
+  end
+  if type(M.config.highlights) ~= "table" then
+    M.config.highlights = {}
+  end
+  if type(M.config.theme_dir) ~= "string" then
+    M.config.theme_dir = nil
+  end
+
+  if type(M.config.link) ~= "table" then
+    M.config.link = vim.deepcopy(defaults.link)
+  end
+  M.config.link.icon = type(M.config.link.icon) == "string" and M.config.link.icon or defaults.link.icon
+  M.config.link.image = type(M.config.link.image) == "string" and M.config.link.image or defaults.link.image
+  if type(M.config.link.wiki) ~= "table" then
+    M.config.link.wiki = vim.deepcopy(defaults.link.wiki)
+  end
+  if type(M.config.link.custom) ~= "table" then
+    M.config.link.custom = vim.deepcopy(defaults.link.custom)
   end
 
   if M.config.inline_virtual_text ~= "overlay" and M.config.inline_virtual_text ~= "win_col" then
@@ -138,6 +173,26 @@ local function validate_config()
   if not valid_presets[M.config.highlight_preset] then
     M.config.highlight_preset = defaults.highlight_preset
   end
+end
+
+local function attach_link_keymap(bufnr)
+  if not M.config.map_gx or not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+  if vim.b[bufnr].markdown_table_wrap_reader == true or not is_supported_filetype(vim.bo[bufnr].filetype) then
+    return
+  end
+
+  vim.keymap.set("n", "gx", function()
+    if not require("markdown-table-wrap.nav").open_link() then
+      local parser = require("markdown-table-wrap.parser")
+      local table_info = parser.parse_at_cursor(vim.api.nvim_get_current_buf(), vim.api.nvim_win_get_cursor(0)[1])
+      if table_info then
+        return
+      end
+      vim.cmd("normal! gx")
+    end
+  end, { buffer = bufnr, silent = true, desc = "Open Markdown table link" })
 end
 
 local function close_existing()
@@ -472,6 +527,39 @@ function M.toggle_preview()
   M.preview()
 end
 
+function M.toggle_inline()
+  local inline = require("markdown-table-wrap.inline")
+  local reader = require("markdown-table-wrap.reader")
+  local bufnr = vim.api.nvim_get_current_buf()
+
+  if reader.is_reader(bufnr) then
+    local source_bufnr = reader.source_bufnr(bufnr)
+    if not M.close_reader() then
+      return false
+    end
+    bufnr = source_bufnr
+  end
+
+  if not is_markdown_buffer() then
+    vim.notify("MarkdownTableWrap: inline rendering is only available in Markdown buffers.", vim.log.levels.INFO)
+    return false
+  end
+
+  if inline.is_active(bufnr) then
+    inline.clear(bufnr)
+    M.state.inline_buf = nil
+    M.state.last_signature[bufnr] = nil
+    M.state.paused_buffers[bufnr] = true
+    return false
+  end
+
+  M.config.preview_mode = "inline"
+  M.config.auto_preview = true
+  M.state.paused_buffers[bufnr] = nil
+  M.refresh_auto({ force = true })
+  return true
+end
+
 function M.enable_auto_preview()
   local bufnr = vim.api.nvim_get_current_buf()
   M.state.paused_buffers[bufnr] = nil
@@ -666,29 +754,7 @@ local function create_autocmds()
     group = M.state.augroup,
     pattern = "*",
     callback = function(args)
-      if vim.b[args.buf].markdown_table_wrap_reader == true then
-        return
-      end
-
-      local fts = { "markdown", "md", "quarto", "rmarkdown" }
-      vim.list_extend(fts, M.config.extra_filetypes or {})
-      if not vim.tbl_contains(fts, vim.bo[args.buf].filetype) then
-        return
-      end
-      if not M.config.map_gx then
-        return
-      end
-
-      vim.keymap.set("n", "gx", function()
-        if not require("markdown-table-wrap.nav").open_link() then
-          local parser = require("markdown-table-wrap.parser")
-          local table_info = parser.parse_at_cursor(vim.api.nvim_get_current_buf(), vim.api.nvim_win_get_cursor(0)[1])
-          if table_info then
-            return
-          end
-          vim.cmd("normal! gx")
-        end
-      end, { buffer = args.buf, silent = true, desc = "Open Markdown table link" })
+      attach_link_keymap(args.buf)
     end,
   })
 end
@@ -698,6 +764,10 @@ function M.setup(opts)
   validate_config()
   create_autocmds()
   M.state.did_setup = true
+
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    attach_link_keymap(bufnr)
+  end
 
   vim.api.nvim_create_user_command("MarkdownTablePreview", function()
     M.preview()
@@ -726,6 +796,10 @@ function M.setup(opts)
   vim.api.nvim_create_user_command("MarkdownTableTogglePreview", function()
     M.toggle_preview()
   end, { desc = "Toggle wrapped Markdown table preview", force = true })
+
+  vim.api.nvim_create_user_command("MarkdownTableToggleInline", function()
+    M.toggle_inline()
+  end, { desc = "Toggle inline Markdown table rendering", force = true })
 
   vim.api.nvim_create_user_command("MarkdownTableClosePreview", function()
     M.close_preview()

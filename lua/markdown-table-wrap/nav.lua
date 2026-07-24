@@ -17,21 +17,61 @@ local function iter_chars_with_pos(text)
   end
 end
 
+local function next_char_at(text, index)
+  local start_col, end_col, ch = text:find("([%z\1-\127\194-\244][\128-\191]*)", index)
+  if not start_col then
+    return nil
+  end
+  return ch, start_col, end_col
+end
+
+local function backtick_run_at(text, index)
+  local count = 0
+  local cursor = index
+
+  while cursor <= #text do
+    local ch, _, end_col = next_char_at(text, cursor)
+    if ch ~= "`" then
+      break
+    end
+    count = count + 1
+    cursor = end_col + 1
+  end
+
+  return count, cursor - 1
+end
+
 local function pipe_positions(line)
   local positions = {}
-  local in_code = false
+  local code_ticks = nil
   local escaped = false
 
-  for ch, start_col in iter_chars_with_pos(line) do
+  local index = 1
+  while index <= #line do
+    local ch, start_col, end_col = next_char_at(line, index)
+    if not ch then
+      break
+    end
+
     if escaped then
       escaped = false
     elseif ch == "\\" then
       escaped = true
     elseif ch == "`" then
-      in_code = not in_code
-    elseif ch == "|" and not in_code then
+      local count, run_end = backtick_run_at(line, index)
+      if not code_ticks then
+        code_ticks = count
+      elseif count == code_ticks then
+        code_ticks = nil
+      end
+      index = run_end + 1
+      goto continue
+    elseif ch == "|" and not code_ticks then
       table.insert(positions, start_col)
     end
+
+    index = end_col + 1
+    ::continue::
   end
 
   return positions

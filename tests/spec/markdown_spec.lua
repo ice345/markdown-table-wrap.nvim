@@ -85,3 +85,11 @@ h.test("markdown extracts links from parsed cells", function()
   h.assert_eq("parsed cell link text", links[1].text, "youtube")
   h.assert_eq("parsed cell link url", links[1].url, "https://www.youtube.com")
 end)
+
+h.test("markdown leaves unmatched syntax visible and handles empty input", function()
+  local markdown = require("markdown-table-wrap.markdown")
+
+  h.assert_eq("empty inline text", markdown.inline_to_text(""), "")
+  h.assert_eq("unmatched code stays visible", markdown.inline_to_text("before `unfinished"), "before `unfinished")
+  h.assert_eq("unmatched link stays visible", markdown.inline_to_text("[missing]("), "[missing](")
+end)

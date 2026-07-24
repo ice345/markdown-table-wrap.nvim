@@ -6,10 +6,11 @@ CONTENTS                                      *markdown-table-wrap-contents*
 1. Overview                         |markdown-table-wrap-overview|
 2. Installation                     |markdown-table-wrap-installation|
 3. Commands                         |markdown-table-wrap-commands|
-4. Configuration                    |markdown-table-wrap-configuration|
-5. Highlights                       |markdown-table-wrap-highlights|
-6. render-markdown.nvim             |markdown-table-wrap-render-markdown|
-7. Limitations                      |markdown-table-wrap-limitations|
+4. View choice                      |markdown-table-wrap-view-choice|
+5. Configuration                    |markdown-table-wrap-configuration|
+6. Highlights                       |markdown-table-wrap-highlights|
+7. render-markdown.nvim             |markdown-table-wrap-render-markdown|
+8. Limitations                      |markdown-table-wrap-limitations|
 
 ==============================================================================
 OVERVIEW                                      *markdown-table-wrap-overview*
@@ -21,7 +22,7 @@ floating preview remain available as optional modes.
 
 READER MODE
 
-Reader mode mirrors the document into a read-only scratch buffer and replaces
+Reader mode mirrors the document into a protected scratch buffer and replaces
 every pipe table with real Unicode buffer lines. It never modifies the source
 Markdown buffer. With auto_preview enabled, Reader opens automatically for
 Markdown buffers and renders every table without requiring cursor focus.
@@ -36,9 +37,22 @@ Default interaction:
 - v/V/CTRL-V select real rendered lines. Yank keeps Reader active.
 - i/a/I/A/o/O switch to the corresponding source line for editing. Reader
   reopens after InsertLeave.
+- :w, :wq, :x, and ZZ save the backing Markdown source directly. The rendered
+  Reader buffer is never written to disk; :wq then quits as usual.
 - |:MarkdownTableToggleReader| switches between Reader and Source.
 - |:MarkdownTableEditSource| leaves Reader and pauses automatic reopening.
 - gx opens the original URL under a rendered link.
+
+VIEW CHOICE                                  *markdown-table-wrap-view-choice*
+
+Use Source for structural editing such as dd, Visual changes, moving rows, or
+changing table delimiters. Use Inline when editing the original buffer while
+keeping a rendered table layer visible. Use Reader for stable full-document
+reading; its i/a/o/e editing commands jump to the mapped Source line.
+
+|:MarkdownTableToggleInline| switches between Source and Inline. From Reader it
+first returns to Source and then enables Inline. Press it again to clear Inline
+and leave Source visible.
 
 To copy original Markdown syntax rather than the rendered table, toggle to
 Source first and use Visual mode there.
@@ -94,6 +108,11 @@ Example LazyVim key bindings:
       desc = "Toggle Markdown reader/source",
     },
     {
+      "<leader>mi",
+      "<cmd>MarkdownTableToggleInline<cr>",
+      desc = "Toggle Markdown table inline view",
+    },
+    {
       "<leader>me",
       "<cmd>MarkdownTableEditSource<cr>",
       desc = "Edit Markdown source",
@@ -101,9 +120,9 @@ Example LazyVim key bindings:
   }
 <
 
-These commands change the current view; they do not modify preview_mode.
 ToggleReader is bidirectional. EditSource is one-way and pauses automatic
-reopening until Reader is explicitly opened again.
+reopening until Reader is explicitly opened again. ToggleInline selects Inline
+for the current editing session and changes preview_mode at runtime.
 
 ==============================================================================
 COMMANDS                                      *markdown-table-wrap-commands*
@@ -132,6 +151,11 @@ COMMANDS                                      *markdown-table-wrap-commands*
                                                *:MarkdownTableEditSource*
 :MarkdownTableEditSource
     Leave Reader, pause automatic reopening, and keep Source visible.
+
+                                             *:MarkdownTableToggleInline*
+:MarkdownTableToggleInline
+    Switch between Source and Inline. From Reader, first return to Source and
+    then enable Inline. Press again to clear Inline and leave Source visible.
 
                                                   *:MarkdownTableTogglePreview*
 :MarkdownTableTogglePreview
@@ -261,7 +285,8 @@ Default setup:
 Important options:
 
 max_width_ratio~
-    Maximum rendered table width as a ratio of the current window width.
+    Maximum rendered table width as a ratio of the current window width,
+    clamped to 0.1 through 1.0.
 
 min_col_width~
     Minimum display width for a column.

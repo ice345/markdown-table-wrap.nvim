@@ -13,6 +13,12 @@ function M.assert_eq(name, actual, expected)
   end
 end
 
+function M.assert_deep_eq(name, actual, expected)
+  if not vim.deep_equal(actual, expected) then
+    M.fail(name, string.format("expected %s, got %s", vim.inspect(expected), vim.inspect(actual)))
+  end
+end
+
 function M.assert_true(name, value)
   if not value then
     M.fail(name, "expected truthy value")

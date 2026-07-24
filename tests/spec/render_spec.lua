@@ -180,3 +180,66 @@ h.test("render can shrink below preferred column width to fit the window", funct
     end
   end)
 end)
+
+h.test("render keeps every source row mapped when cells wrap", function()
+  local parser = require("markdown-table-wrap.parser")
+  local render = require("markdown-table-wrap.render")
+
+  h.with_buffer({
+    "| A | B |",
+    "| --- | --- |",
+    "| alpha beta gamma delta | one |",
+    "| two | three |",
+  }, function(buf)
+    vim.api.nvim_win_set_width(0, 36)
+    local parsed = parser.parse_at_cursor(buf, 3)
+    local rendered = render.render_table(parsed, {
+      max_width_ratio = 1,
+      min_col_width = 4,
+      max_col_width = 8,
+      use_unicode_border = true,
+      table_border = "rounded",
+      row_separator = true,
+    })
+
+    local first_row_lines = 0
+    for _, source_lnum in ipairs(rendered.source_lnums) do
+      if source_lnum == 3 then
+        first_row_lines = first_row_lines + 1
+      end
+    end
+    h.assert_true("wrapped source row maps to multiple rendered lines", first_row_lines > 1)
+    h.assert_eq("final border maps to final source row", rendered.source_lnums[#rendered.source_lnums], 4)
+  end)
+end)
+
+h.test("render respects preferred widths when fit-to-window is disabled", function()
+  local parser = require("markdown-table-wrap.parser")
+  local render = require("markdown-table-wrap.render")
+
+  h.with_buffer({
+    "| A | B | C |",
+    "| --- | --- | --- |",
+    "| one | two | three |",
+  }, function(buf)
+    vim.api.nvim_win_set_width(0, 30)
+    local parsed = parser.parse_at_cursor(buf, 3)
+    local rendered = render.render_table(parsed, {
+      max_width_ratio = 0.5,
+      min_col_width = 10,
+      max_col_width = 10,
+      fit_to_window = false,
+      use_unicode_border = true,
+      table_border = "single",
+      row_separator = false,
+    })
+
+    h.assert_true("table can exceed requested viewport", rendered.width > 15)
+    h.assert_eq("top border keeps stable width", vim.api.nvim_strwidth(rendered.lines[1]), rendered.width)
+    h.assert_eq(
+      "bottom border keeps stable width",
+      vim.api.nvim_strwidth(rendered.lines[#rendered.lines]),
+      rendered.width
+    )
+  end)
+end)

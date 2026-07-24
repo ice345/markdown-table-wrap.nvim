@@ -36,6 +36,40 @@ local function backtick_run_at(text, index)
   return count, cursor - 1
 end
 
+local function fence_at(line)
+  local marker = line:match("^%s*([`~]+)")
+  if not marker or #marker < 3 then
+    return nil
+  end
+  return marker:sub(1, 1), #marker
+end
+
+local function in_fenced_code_block(bufnr, target_lnum)
+  local fence_char = nil
+  local fence_length = nil
+
+  for lnum = 1, target_lnum do
+    local line = vim.api.nvim_buf_get_lines(bufnr, lnum - 1, lnum, false)[1] or ""
+    local char, length = fence_at(line)
+
+    if not fence_char then
+      if char then
+        fence_char = char
+        fence_length = length
+      end
+    elseif char == fence_char and length >= fence_length then
+      fence_char = nil
+      fence_length = nil
+    end
+
+    if lnum == target_lnum then
+      return fence_char ~= nil
+    end
+  end
+
+  return false
+end
+
 local function has_unescaped_pipe(line)
   local code_ticks = nil
   local escaped = false
@@ -186,6 +220,10 @@ end
 function M.parse_at_cursor(bufnr, cursor_lnum)
   local total = vim.api.nvim_buf_line_count(bufnr)
   local current = vim.api.nvim_buf_get_lines(bufnr, cursor_lnum - 1, cursor_lnum, false)[1] or ""
+
+  if in_fenced_code_block(bufnr, cursor_lnum) then
+    return nil, "MarkdownTableWrap: cursor is inside a fenced code block."
+  end
 
   if not is_tableish_line(current) then
     return nil, "MarkdownTableWrap: cursor is not inside a Markdown pipe table."
