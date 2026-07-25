@@ -92,6 +92,10 @@ local function detect_preset()
 end
 
 local function normalize_spec(spec)
+  if type(spec) ~= "table" then
+    return { link = "Normal" }
+  end
+
   if spec.link and vim.fn.hlexists(spec.link) == 0 then
     local fallback = presets.default
     for key, group in pairs(groups) do
@@ -130,12 +134,17 @@ function M.apply(config)
   if preset_name == "auto" then
     preset_name = detect_preset()
   end
-  local custom_theme = (config.themes or {})[preset_name] or load_theme_file(config, preset_name)
-  local preset = vim.deepcopy(custom_theme or presets[preset_name] or presets.tokyonight)
+  local custom_theme = (config.themes or {})[preset_name]
+  if type(custom_theme) ~= "table" then
+    custom_theme = load_theme_file(config, preset_name)
+  end
+  local preset = vim.deepcopy(custom_theme or presets[preset_name] or presets.default)
   local overrides = config.highlights or {}
 
   for key, group in pairs(groups) do
-    local spec = vim.tbl_deep_extend("force", preset[key] or {}, overrides[key] or {})
+    local base = type(preset[key]) == "table" and preset[key] or {}
+    local override = type(overrides[key]) == "table" and overrides[key] or {}
+    local spec = vim.tbl_deep_extend("force", base, override)
     vim.api.nvim_set_hl(0, group, normalize_spec(spec))
   end
 end

@@ -367,9 +367,9 @@ Options:
 - `inline_disable_wrap`: temporarily set `nowrap` in windows showing inline replace mode so long source rows do not soft-wrap underneath the rendered table.
 - `inline_wrap_scope`: controls where `inline_disable_wrap` applies. `"always"` keeps the window-wide `nowrap` behavior, `"cursor"` (the default) disables wrapping only while the cursor is inside a rendered table, and `"never"` leaves `wrap` fully under user control.
 - `inline_viewport_scrolling`: when `true`, `:MarkdownTableScrollDown` and `:MarkdownTableScrollUp` page through rendered rows inside the original table height. The default is `false`, which shows the complete rendered table inline with extra virtual lines.
-- `highlight_preset`: `"default"`, `"tokyonight"`, `"catppuccin"`, `"render_markdown"`, or `"auto"`. The default preset follows standard Neovim highlight groups so it fits arbitrary colorschemes without extra theme tuning.
-- `theme_dir`: optional directory containing custom theme files named `<preset>.lua`.
-- `themes`: inline custom theme table keyed by preset name.
+- `highlight_preset`: `"default"`, `"tokyonight"`, `"catppuccin"`, `"render_markdown"`, `"auto"`, or any custom key supplied through `themes`/`theme_dir`. The default preset follows standard Neovim highlight groups so it fits arbitrary colorschemes without extra theme tuning.
+- `theme_dir`: optional directory containing custom theme files named `<preset>.lua`; the file name must match `highlight_preset`.
+- `themes`: inline custom theme table keyed by `highlight_preset`.
 - `highlights`: override highlight specs by semantic key.
 - `map_gx`: map `gx` in Markdown buffers to `:MarkdownTableOpenLink` with fallback to native `gx`.
 - `link`: icon configuration for links, wiki links, images, and URL pattern matches.

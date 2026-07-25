@@ -166,11 +166,21 @@ local function validate_config()
     M.config.table_border = defaults.table_border
   end
 
-  local valid_presets = {}
+  local preset_name = M.config.highlight_preset
+  local builtin_preset = false
   for _, preset in ipairs(require("markdown-table-wrap.theme").presets()) do
-    valid_presets[preset] = true
+    if preset == preset_name then
+      builtin_preset = true
+      break
+    end
   end
-  if not valid_presets[M.config.highlight_preset] then
+  local inline_custom = type(M.config.themes[preset_name]) == "table"
+  local file_custom = type(M.config.theme_dir) == "string"
+  if
+    type(preset_name) ~= "string"
+    or preset_name == ""
+    or (not builtin_preset and not inline_custom and not file_custom)
+  then
     M.config.highlight_preset = defaults.highlight_preset
   end
 end

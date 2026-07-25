@@ -345,15 +345,17 @@ render_all~
     Render all tables in the current Markdown buffer.
 
 highlight_preset~
-    "default", "tokyonight", "catppuccin", "render_markdown", or "auto".
-    The default preset links to standard Neovim highlight groups so it works
-    naturally with arbitrary colorschemes.
+    "default", "tokyonight", "catppuccin", "render_markdown", "auto", or a
+    custom key supplied through |themes| or |theme_dir|. The default preset
+    links to standard Neovim highlight groups so it works naturally with
+    arbitrary colorschemes.
 
 theme_dir~
     Optional directory containing custom theme files named <preset>.lua.
 
 themes~
-    Inline custom theme table keyed by preset name.
+    Inline custom theme table keyed by |highlight_preset|. For example, set
+    highlight_preset = "my_theme" and provide themes.my_theme.
 
 inline_viewport_scrolling~
     When enabled, |:MarkdownTableScrollDown| and |:MarkdownTableScrollUp|

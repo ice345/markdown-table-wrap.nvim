@@ -56,6 +56,22 @@ h.test("theme presets and overrides", function()
   local mark = vim.api.nvim_get_hl(0, { name = "MarkdownTableWrapMark" })
   h.assert_eq("custom theme table", mark.fg, tonumber("aaaaaa", 16))
 
+  local plugin = require("markdown-table-wrap")
+  plugin.setup({
+    auto_preview = false,
+    highlight_preset = "catppuccin2",
+    themes = {
+      catppuccin2 = {
+        border = { fg = "#123456" },
+        inline = { link = "Normal" },
+      },
+    },
+  })
+  theme.apply(plugin.config)
+  local configured_border = vim.api.nvim_get_hl(0, { name = "MarkdownTableWrapBorder" })
+  h.assert_eq("setup preserves custom preset name", plugin.config.highlight_preset, "catppuccin2")
+  h.assert_eq("setup applies custom preset", configured_border.fg, tonumber("123456", 16))
+
   local theme_dir = vim.fn.tempname()
   vim.fn.mkdir(theme_dir, "p")
   vim.fn.writefile({
