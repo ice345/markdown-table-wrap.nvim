@@ -2,6 +2,64 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
+## 0.2.2 - Stability And Editor Coexistence
+
+### Added
+
+- Add `reader.auto_open = "has_table" | "always"`. The default enters Reader
+  automatically only when a supported buffer contains a table; `"always"`
+  preserves the previous all-document Reader behavior.
+- Add `rmd` to the built-in filetypes so standard Neovim R Markdown detection
+  works without `extra_filetypes`.
+- Add `get_buffer_config(bufnr)` and `get_preview_mode(bufnr)` for inspecting
+  effective per-buffer view configuration.
+- Reapply semantic table highlights after `ColorScheme` events.
+- Add regression coverage for large invalid pipe candidates, buffer-local
+  scheduling/modes, mapping preservation, lifecycle cleanup, and compact border
+  highlight spans.
+
+### Changed
+
+- Default `map_gx` to `false`, leaving existing Source-buffer `gx` mappings
+  untouched. Table-aware link opening remains available in Reader, through
+  `:MarkdownTableOpenLink`, or by explicitly setting `map_gx = true`.
+- Keep runtime view, auto-preview, inline viewport, and deferred refresh state
+  per buffer instead of mutating global setup values.
+- Scan buffer lines and fenced blocks in one parsing pass, avoiding the previous
+  quadratic worst case on long runs of pipe-like text.
+- Accept top-level tables indented by up to three spaces, normalize body rows
+  with missing cells (including eligible rows without a literal pipe), and stop
+  before blockquote/list/other Markdown block starts.
+- Track arbitrary-length backtick runs while splitting table rows so matching
+  code spans can safely contain pipes.
+- Merge continuous border highlights into ranges instead of creating an extmark
+  for every border character.
+- Automatically keep table-free Markdown in Source under the new default Reader
+  policy.
+
+### Fixed
+
+- Preserve, invoke, and restore existing callback, string, and expression `gx`
+  mappings outside table cells when the table-aware mapping is explicitly
+  enabled.
+- Prevent delayed refresh work in one buffer from being cancelled by or applied
+  to another buffer.
+- Restore Inline window-local wrap and conceal options when leaving or clearing
+  a rendered buffer, and dispose retained buffer state on wipeout.
+- Keep all wrapped header rows on the Header highlight path in Inline replace
+  and insert modes.
+- Dispose stale Inline viewport offsets during repeated `setup()` calls.
+- Cancel delayed refreshes belonging to a previous `setup()` instance and
+  reconfigure open Reader windows with the new Reader options while closing
+  stale Float previews.
+- Apply `:MarkdownTableDisableAutoPreview` from Reader to its backing source
+  buffer instead of the protected Reader scratch buffer.
+- Validate nested Reader options before applying them to a window.
+- Preserve custom theme presets supplied through setup instead of replacing them
+  during validation.
+- Let direct custom highlight specs replace a preset's linked base highlight,
+  and replay those overrides correctly after a colorscheme change.
+
 ## 0.2.1 - Reader Workflow And Regression Coverage
 
 ### Added
@@ -67,6 +125,17 @@ All notable changes to `markdown-table-wrap.nvim` are documented here.
 - Preserve link URL metadata through wrapping and rendering.
 - Support links spanning multiple rendered lines.
 - Prevent native `gx` from opening labels such as `youtube` or `Details`.
+
+## 0.1.3 - Inline Selection And Extra-Line Highlights
+
+### Added
+
+- Add `clear_on_visual` so Inline reveals source Markdown during Visual,
+  Visual-Line, and Visual-Block selection, then renders again after selection.
+
+### Fixed
+
+- Use the correct rendered-row index when styling extra Inline virtual lines.
 
 ## 0.1.2 - Setup And Defaults Cleanup
 

@@ -110,6 +110,31 @@ h.test("extra_filetypes renders in configured filetype", function()
   end)
 end)
 
+h.test("R Markdown filetypes render without extra configuration", function()
+  local plugin = require("markdown-table-wrap")
+  local inline = require("markdown-table-wrap.inline")
+
+  plugin.setup({
+    preview_mode = "inline",
+    debounce_ms = 0,
+    render_all = true,
+    auto_preview = false,
+  })
+
+  for _, filetype in ipairs({ "rmd", "rmarkdown" }) do
+    h.with_buffer({
+      "| A | B |",
+      "| --- | --- |",
+      "| foo | bar |",
+    }, function(buf)
+      vim.bo[buf].filetype = filetype
+      plugin.refresh_auto({ force = true })
+      h.assert_true(filetype .. " table renders", inline.is_active(buf))
+      inline.clear(buf)
+    end)
+  end
+end)
+
 h.test("non-configured filetypes are ignored", function()
   local plugin = require("markdown-table-wrap")
   local inline = require("markdown-table-wrap.inline")

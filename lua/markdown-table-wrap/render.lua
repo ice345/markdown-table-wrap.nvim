@@ -89,6 +89,34 @@ local function iter_chars_with_pos(text)
   end
 end
 
+local function border_ranges(text)
+  local ranges = {}
+  local range_start = nil
+  local range_end = nil
+
+  local function flush()
+    if range_start ~= nil then
+      table.insert(ranges, { range_start, range_end })
+      range_start = nil
+      range_end = nil
+    end
+  end
+
+  for ch, start_col, end_col in iter_chars_with_pos(text) do
+    if render_border_chars[ch] then
+      if range_start == nil then
+        range_start = start_col
+      end
+      range_end = end_col
+    else
+      flush()
+    end
+  end
+  flush()
+
+  return ranges
+end
+
 local function apply_highlights(buf, lines, config, opts)
   opts = opts or {}
   ensure_highlights(config)
@@ -102,7 +130,8 @@ local function apply_highlights(buf, lines, config, opts)
   for row, line_obj in ipairs(lines) do
     local line = type(line_obj) == "table" and line_obj.text or line_obj
     local row_index = start_row + row - 1
-    local line_hl = row == 2 and "MarkdownTableWrapHeader" or "MarkdownTableWrapInline"
+    local is_header = type(line_obj) == "table" and line_obj.is_header
+    local line_hl = (is_header or row == 2) and "MarkdownTableWrapHeader" or "MarkdownTableWrapInline"
 
     vim.api.nvim_buf_set_extmark(buf, namespace, row_index, 0, {
       end_row = row_index,
@@ -111,15 +140,13 @@ local function apply_highlights(buf, lines, config, opts)
       priority = 10,
     })
 
-    for ch, start_col, end_col in iter_chars_with_pos(line) do
-      if render_border_chars[ch] then
-        vim.api.nvim_buf_set_extmark(buf, namespace, row_index, start_col, {
-          end_row = row_index,
-          end_col = end_col,
-          hl_group = "MarkdownTableWrapBorder",
-          priority = 20,
-        })
-      end
+    for _, range in ipairs(border_ranges(line)) do
+      vim.api.nvim_buf_set_extmark(buf, namespace, row_index, range[1], {
+        end_row = row_index,
+        end_col = range[2],
+        hl_group = "MarkdownTableWrapBorder",
+        priority = 20,
+      })
     end
 
     for _, chunk in ipairs(type(line_obj) == "table" and line_obj.chunks or {}) do
@@ -346,6 +373,7 @@ function M.render_table(table_info, config)
   append(border_line(chars, chars.top_left, chars.top_join, chars.top_right, col_widths), table_info.start_lnum)
 
   for _, line in ipairs(render_row(table_info.header, col_widths, table_info.align, chars, config)) do
+    line.is_header = true
     append(line, table_info.start_lnum)
   end
 

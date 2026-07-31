@@ -49,6 +49,39 @@ h.test("parser supports optional outer pipes and alignment", function()
   end)
 end)
 
+h.test("parser trims whitespace around outer pipes", function()
+  local parser = require("markdown-table-wrap.parser")
+
+  h.with_buffer({
+    "   | A | B |   ",
+    "   | :--- | ---: |   ",
+    "   | left | right |   ",
+  }, function(buf)
+    local parsed = parser.parse_at_cursor(buf, 2)
+    h.assert_true("whitespace outer pipe table parsed", parsed ~= nil)
+    h.assert_eq("whitespace outer pipe column count", #parsed.header, 2)
+    h.assert_eq("whitespace outer pipe first header", parsed.header[1].text, "A")
+    h.assert_eq("whitespace outer pipe second row cell", parsed.rows[1][2].text, "right")
+    h.assert_eq("whitespace outer pipe left alignment", parsed.align[1], "left")
+    h.assert_eq("whitespace outer pipe right alignment", parsed.align[2], "right")
+  end)
+end)
+
+h.test("parser does not mistake a whitespace-padded escaped pipe for an outer pipe", function()
+  local parser = require("markdown-table-wrap.parser")
+
+  h.with_buffer({
+    "A | B",
+    "--- | ---",
+    "one | escaped\\|   ",
+  }, function(buf)
+    local parsed = parser.parse_at_cursor(buf, 3)
+    h.assert_true("escaped trailing pipe table parsed", parsed ~= nil)
+    h.assert_eq("escaped trailing pipe cell count", #parsed.rows[1], 2)
+    h.assert_eq("escaped trailing pipe preserved", parsed.rows[1][2].text, "escaped|")
+  end)
+end)
+
 h.test("parser normalizes missing and extra cells", function()
   local parser = require("markdown-table-wrap.parser")
 
@@ -62,6 +95,42 @@ h.test("parser normalizes missing and extra cells", function()
     h.assert_eq("missing cell empty", parsed.rows[1][2].text, "")
     h.assert_eq("extra cell ignored", #parsed.rows[2], 2)
     h.assert_eq("second cell preserved", parsed.rows[2][2].text, "two")
+  end)
+end)
+
+h.test("parser supports GFM Example 202 body rows without pipes", function()
+  local parser = require("markdown-table-wrap.parser")
+
+  h.with_buffer({
+    "| abc | def |",
+    "| --- | --- |",
+    "| bar | baz |",
+    "bar",
+    "",
+    "bar",
+  }, function(buf)
+    local parsed = parser.parse_at_cursor(buf, 4)
+    h.assert_true("pipe-free body row belongs to table", parsed ~= nil)
+    h.assert_eq("GFM table stops at blank line", parsed.end_lnum, 4)
+    h.assert_eq("GFM body row count", #parsed.rows, 2)
+    h.assert_eq("GFM missing cell first value", parsed.rows[2][1].text, "bar")
+    h.assert_eq("GFM missing cell normalized", parsed.rows[2][2].text, "")
+    h.assert_false("paragraph after blank is not table row", parser.parse_at_cursor(buf, 6))
+  end)
+end)
+
+h.test("parser keeps inline HTML at the start of a body row", function()
+  local parser = require("markdown-table-wrap.parser")
+
+  h.with_buffer({
+    "A | B",
+    "--- | ---",
+    "<em>one</em> | two",
+  }, function(buf)
+    local parsed = parser.parse_at_cursor(buf, 3)
+    h.assert_true("inline HTML row belongs to table", parsed ~= nil)
+    h.assert_eq("inline HTML row reaches table end", parsed.end_lnum, 3)
+    h.assert_eq("inline HTML text is preserved", parsed.rows[1][1].text, "<em>one</em>")
   end)
 end)
 
@@ -115,6 +184,49 @@ h.test("parser does not consume adjacent pipe paragraphs", function()
     h.assert_eq("only one table", #tables, 1)
     h.assert_eq("table start after paragraph", tables[1].start_lnum, 3)
     h.assert_eq("table end before paragraph", tables[1].end_lnum, 5)
+  end)
+end)
+
+h.test("parser stops tables at new block-level structures", function()
+  local parser = require("markdown-table-wrap.parser")
+
+  local cases = {
+    { label = "blockquote", line = "> quote | text" },
+    { label = "heading", line = "## Heading | text" },
+    { label = "list", line = "- item | text" },
+    { label = "thematic break", line = "***" },
+    { label = "HTML block", line = "<div>block | text</div>" },
+    { label = "link reference", line = "[ref]: https://example.com/a|b" },
+  }
+
+  for _, case in ipairs(cases) do
+    h.with_buffer({
+      "| A | B |",
+      "| --- | --- |",
+      "| one | two |",
+      case.line,
+    }, function(buf)
+      local parsed = parser.parse_at_cursor(buf, 3)
+      h.assert_true(case.label .. " preceding table parsed", parsed ~= nil)
+      h.assert_eq(case.label .. " ends table", parsed.end_lnum, 3)
+      h.assert_false(case.label .. " is not consumed", parser.parse_at_cursor(buf, 4))
+    end)
+  end
+end)
+
+h.test("parser rejects table syntax nested in block-level prefixes", function()
+  local parser = require("markdown-table-wrap.parser")
+
+  h.with_buffer({
+    "> A | B",
+    "> --- | ---",
+    "> one | two",
+    "",
+    "- A | B",
+    "  --- | ---",
+  }, function(buf)
+    local tables = parser.parse_all(buf)
+    h.assert_eq("nested block syntax not treated as top-level tables", #tables, 0)
   end)
 end)
 
@@ -187,5 +299,68 @@ h.test("parser ignores table-shaped text inside fenced code blocks", function()
     local tables = parser.parse_all(buf)
     h.assert_eq("only real table is collected", #tables, 1)
     h.assert_eq("real table starts after fences", tables[1].start_lnum, 13)
+  end)
+end)
+
+h.test("parser only closes fenced code with a bare fence marker", function()
+  local parser = require("markdown-table-wrap.parser")
+
+  h.with_buffer({
+    "```lua",
+    "| Code | Table |",
+    "| --- | --- |",
+    "| one | two |",
+    "``` still code",
+    "| Also | Code |",
+    "| --- | --- |",
+    "| three | four |",
+    "```   ",
+    "",
+    "| Real | Table |",
+    "| --- | --- |",
+    "| yes | rendered |",
+  }, function(buf)
+    local inside, message = parser.parse_at_cursor(buf, 7)
+    h.assert_false("nonempty fence tail does not close block", inside)
+    h.assert_true("invalid closer remains fenced", message:find("fenced code block", 1, true) ~= nil)
+
+    local tables = parser.parse_all(buf)
+    h.assert_eq("only post-fence table collected", #tables, 1)
+    h.assert_eq("bare closer permits following table", tables[1].start_lnum, 11)
+  end)
+end)
+
+h.test("parse_all reads the buffer once for large pipe-shaped prose", function()
+  local parser = require("markdown-table-wrap.parser")
+  local lines = {}
+
+  for index = 1, 2000 do
+    lines[index] = string.format("prose %d | still not a table", index)
+  end
+
+  vim.list_extend(lines, {
+    "",
+    "| A | B |",
+    "| --- | --- |",
+    "| one | two |",
+  })
+
+  h.with_buffer(lines, function(buf)
+    local original_get_lines = vim.api.nvim_buf_get_lines
+    local get_lines_calls = 0
+    vim.api.nvim_buf_get_lines = function(...)
+      get_lines_calls = get_lines_calls + 1
+      return original_get_lines(...)
+    end
+
+    local ok, tables = pcall(parser.parse_all, buf)
+    vim.api.nvim_buf_get_lines = original_get_lines
+
+    if not ok then
+      error(tables)
+    end
+
+    h.assert_eq("large document table count", #tables, 1)
+    h.assert_eq("parse_all buffer reads", get_lines_calls, 1)
   end)
 end)

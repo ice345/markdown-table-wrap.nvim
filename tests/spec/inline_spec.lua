@@ -330,11 +330,11 @@ h.test("inline viewport toggle switches between sliced and full rendering", func
 
     h.assert_false("viewport mode avoids extra virt_lines", has_virt_lines())
     vim.cmd("MarkdownTableToggleInlineViewport")
-    h.assert_false("viewport disabled", plugin.config.inline_viewport_scrolling)
+    h.assert_false("viewport disabled", plugin.get_buffer_config(buf).inline_viewport_scrolling)
     h.assert_true("full mode uses virt_lines", has_virt_lines())
 
     vim.cmd("MarkdownTableToggleInlineViewport")
-    h.assert_true("viewport enabled", plugin.config.inline_viewport_scrolling)
+    h.assert_true("viewport enabled", plugin.get_buffer_config(buf).inline_viewport_scrolling)
     h.assert_false("viewport mode restored", has_virt_lines())
 
     inline.clear(buf)
@@ -391,6 +391,45 @@ h.test("extra inline virtual lines keep their original rendered line index", fun
     h.assert_false("member B is not treated as table header", groups.MarkdownTableWrapHeader)
     h.assert_true("member B keeps normal inline highlight", groups.MarkdownTableWrapInline)
 
+    inline.clear(buf)
+  end)
+end)
+
+h.test("inline insert mode highlights every wrapped header line", function()
+  local plugin = require("markdown-table-wrap")
+  local inline = require("markdown-table-wrap.inline")
+
+  plugin.setup({
+    preview_mode = "inline",
+    inline_mode = "insert",
+    auto_preview = false,
+    render_all = true,
+    min_col_width = 4,
+    max_col_width = 6,
+  })
+
+  h.with_buffer({
+    "| a header that wraps | B |",
+    "| --- | --- |",
+    "| value | other |",
+  }, function(buf)
+    vim.bo[buf].filetype = "markdown"
+    plugin.refresh_auto({ force = true })
+
+    local highlighted_header_lines = 0
+    local marks = vim.api.nvim_buf_get_extmarks(buf, inline.namespace(), 0, -1, { details = true })
+    for _, mark in ipairs(marks) do
+      for _, virt_line in ipairs((mark[4] or {}).virt_lines or {}) do
+        for _, chunk in ipairs(virt_line) do
+          if chunk[2] == "MarkdownTableWrapHeader" then
+            highlighted_header_lines = highlighted_header_lines + 1
+            break
+          end
+        end
+      end
+    end
+
+    h.assert_true("wrapped header spans multiple virtual lines", highlighted_header_lines > 1)
     inline.clear(buf)
   end)
 end)

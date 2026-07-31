@@ -1,195 +1,328 @@
 # Publishing Guide
 
-This guide explains how to publish `markdown-table-wrap.nvim` so other users can install it with lazy.nvim or LazyVim.
+This is the maintenance and release procedure for the existing public
+repository. The repository has already been created; do not reinitialize it or
+rename its development branch as part of a release.
 
-## 1. Create The GitHub Repository
+## Repository Facts
 
-Create a public GitHub repository named:
+- Repository: `ice345/markdown-table-wrap.nvim`
+- Remote: `origin` (`git@github.com:ice345/markdown-table-wrap.nvim.git`)
+- Development/release branch: `master`
+- Latest published tag before this release: `v0.2.1`
+- Next planned release: `v0.2.2`
+- Supported Neovim baseline: 0.10+
 
-```text
-markdown-table-wrap.nvim
-```
-
-Then initialize and push from the plugin directory:
-
-```sh
-cd markdown-table-wrap.nvim
-git init
-git add .
-git commit -m "Initial release"
-git branch -M main
-git remote add origin git@github.com:ice345/markdown-table-wrap.nvim.git
-git push -u origin main
-```
-
-Use HTTPS instead of SSH if preferred:
+Verify these values rather than assuming the local checkout is current:
 
 ```sh
-git remote add origin https://github.com/ice345/markdown-table-wrap.nvim.git
+git remote -v
+git branch --show-current
+git fetch origin --tags
+git status --short
+git tag --sort=-version:refname | head
 ```
 
-## 2. Verify CI
+Release only from `master`, with no unrelated local changes, after the branch is
+up to date with `origin/master`.
 
-After pushing, open the GitHub Actions tab and make sure CI passes.
+## 1. Freeze The Release Scope
 
-The workflow checks:
+Before preparing v0.2.2:
 
-- Lua formatting with StyLua.
-- Headless Neovim regression tests.
+1. Stop adding features not listed in the v0.2.2 CHANGELOG section.
+2. Review every commit since the previous release:
 
-## 3. Tag The First Release
+   ```sh
+   git log --oneline v0.2.1..master
+   git diff --stat v0.2.1..master
+   ```
 
-For the initial public release:
+3. Confirm each user-visible change has a regression test or a documented
+   manual check.
+4. Confirm the renderer still does not modify Markdown source text.
+5. Move unfinished work to [ROADMAP.md](ROADMAP.md); do not describe it as part
+   of the release.
+
+## 2. Align Version And Documentation
+
+For v0.2.2, all of the following must agree:
+
+- `M.version` in `lua/markdown-table-wrap/init.lua`
+- The top release in `CHANGELOG.md`
+- README configuration/default behavior
+- `doc/markdown-table-wrap.txt`
+- The annotated Git tag `v0.2.2`
+- The GitHub release title
+
+Search for stale version/default references:
 
 ```sh
-git tag -a v0.1.0 -m "markdown-table-wrap.nvim v0.1.0"
-git push origin v0.1.0
+rg -n '0\.2\.[0-9]+|map_gx|auto_open|your-name|ft = ' \
+  README.md CHANGELOG.md PUBLISHING.md ROADMAP.md doc lua tests
 ```
 
-## 4. Create A GitHub Release
-
-Open GitHub:
-
-```text
-Repository -> Releases -> Draft a new release
-```
-
-Use:
-
-```text
-Tag: v0.1.0
-Title: markdown-table-wrap.nvim v0.1.0
-```
-
-Paste the release notes draft from the end of this file.
-
-Recommended release assets/screenshots:
-
-- `01-inline-tokyonight.png`: Normal mode inline rendering of a wide table.
-- `02-inline-scroll-before-after.gif`: Inline viewport scrolling with `:MarkdownTableScrollDown` / `:MarkdownTableScrollUp`.
-- `02b-inline-full-toggle.png`: Full inline expansion after `:MarkdownTableToggleInlineViewport`.
-- `02c-link-icons-highlight.png`: Link icons, wiki/image icons, and `==highlight==`.
-- `03-floating-long-table.png`: Floating preview of a long wrapped table.
-- `04-insert-source-reveal.png`: Insert mode source reveal.
-- `05-render-markdown-coexistence.png`: render-markdown.nvim handling non-table Markdown while this plugin handles the table.
-
-## 5. User Installation
-
-LazyVim / lazy.nvim users can install from GitHub:
-
-```lua
-return {
-  {
-    "ice345/markdown-table-wrap.nvim",
-    ft = "markdown",
-    opts = {
-      highlight_preset = "auto",
-    },
-  },
-}
-```
-
-If they also use `render-markdown.nvim`, they should disable its table renderer:
-
-```lua
-return {
-  "MeanderingProgrammer/render-markdown.nvim",
-  opts = {
-    pipe_table = {
-      enabled = false,
-    },
-  },
-}
-```
-
-## 6. Updating The Plugin
-
-Users update it through their plugin manager:
-
-```vim
-:Lazy update markdown-table-wrap.nvim
-```
-
-For future releases:
+Regenerate Vim help tags after help changes:
 
 ```sh
-git tag -a v0.2.1 -m "markdown-table-wrap.nvim v0.2.1"
-git push origin v0.2.1
+nvim --headless -u NONE \
+  -c "helptags doc" \
+  -c "qa!"
 ```
 
-Then draft a new GitHub release from that tag.
+Review `doc/tags` and commit it when regeneration changes the file.
 
-## 7. Release Checklist
+## 3. Run Automated Gates
 
-Use this before tagging a public release.
+From the plugin repository root:
 
-- Run the headless test suite from the repository root.
-- Run `:checkhealth markdown-table-wrap` in a real Neovim session.
-- Verify the README install snippet with your current plugin manager setup.
-- Verify coexistence with `render-markdown.nvim` and `pipe_table.enabled = false`.
-- Verify inline rendering in Normal mode.
-- Verify the default full-document Reader opens automatically without cursor focus.
-- Verify Reader prevents direct text edits while Visual selection and yank stay inside Reader.
-- Verify `i`, `a`, `o`, and related Insert commands return to the mapped source line.
-- Verify Reader reopens after `InsertLeave` and after leaving Visual mode.
-- Verify `:MarkdownTableToggleReader` and `:MarkdownTableEditSource` state transitions.
-- Verify `:MarkdownTableToggleInline` switches Reader/Source into Inline and back to Source.
-- Verify `:w`, `:wq`, `:x`, and `ZZ` from Reader save the backing Markdown file.
-- Verify inline viewport scrolling with `:MarkdownTableScrollDown` and `:MarkdownTableScrollUp`.
-- Verify inline viewport/full toggle with `:MarkdownTableToggleInlineViewport`.
-- Verify viewport top/bottom jumps with `:MarkdownTableScrollTop` and `:MarkdownTableScrollBottom`.
-- Verify link icons and `==highlight==` rendering.
-- Verify `gx` / `:MarkdownTableOpenLink` opens the source table cell URL.
-- Verify source reveal in Insert mode.
-- Verify floating preview.
-- Verify a wide mixed Chinese/English table.
-- Verify parser boundaries: escaped pipe, pipe inside inline code, double-backtick code span, invalid delimiter row rejection, and adjacent pipe-like prose not being concealed.
-- Verify inline token styles: code, bold, italic, strikethrough, and link.
+```sh
+stylua --check .
+```
 
-## 8. Release Notes Draft
+```sh
+nvim --headless -u NONE --cmd "set shadafile=NONE" --cmd "set noswapfile" \
+  -c "set rtp+=." \
+  -c "luafile tests/run.lua" \
+  -c "qa!"
+```
 
-### markdown-table-wrap.nvim v0.2.1
+The GitHub Actions workflow repeats formatting and the headless suite on:
 
-This release makes the Reader workflow more natural for daily Markdown writing
-and strengthens the release regression suite.
+- Neovim 0.10.4
+- Neovim stable
+
+Also run whitespace and documentation checks:
+
+```sh
+git diff --check
+```
+
+```sh
+nvim --headless -u NONE \
+  -c "set rtp+=." \
+  -c "help markdown-table-wrap" \
+  -c "qa!"
+```
+
+Open every relative link in README, CHANGELOG, PUBLISHING, and ROADMAP during
+release review, and confirm every referenced file exists in the checkout.
+
+## 4. Run The v0.2.2 Manual Matrix
+
+Use a saved Markdown file with no table, one short table, one very wide table,
+several tables, links, escaped pipes, code spans, and mixed CJK/English text.
+
+### Default Behavior And State Isolation
+
+- With the default `reader.auto_open = "has_table"`, confirm plain Markdown
+  remains in Source.
+- Confirm a document containing a table automatically opens Reader and renders
+  all tables without cursor focus.
+- Set `reader.auto_open = "always"` and confirm a table-free supported buffer
+  opens Reader.
+- Open two Markdown buffers, choose different views, and confirm toggling one
+  does not change the other's mode or the global configured default.
+- Trigger edits/refreshes in two buffers in quick succession and confirm each
+  buffer refreshes itself rather than cancelling or rendering the other.
+- Wipe a rendered buffer and confirm reopening a document does not inherit stale
+  viewport, timer, or view state.
+
+### Mappings And Links
+
+- Define a custom `gx` mapping before loading the plugin. With default
+  `map_gx = false`, confirm the mapping remains unchanged in Source.
+- Confirm `:MarkdownTableOpenLink` opens a table-cell URL.
+- Set `map_gx = true` and confirm table links open through the opt-in mapping.
+- Confirm Reader `gx` opens the original URL rather than its displayed label.
+- Confirm ordinary links outside tables retain their normal behavior.
+
+### Reader, Inline, And Float
+
+- Confirm Reader Visual selection/yank uses real rendered lines and does not
+  edit source text.
+- Confirm `i`, `a`, `I`, `A`, `o`, and `O` return to the mapped source line and
+  Reader reopens after `InsertLeave`.
+- Confirm `:w`, `:wq`, `:x`, and `ZZ` forward saves to the backing Markdown
+  source; confirm anonymous-buffer errors are clear.
+- Confirm `:MarkdownTableToggleReader`, `:MarkdownTableEditSource`, and
+  `:MarkdownTableToggleInline` have the documented transitions.
+- Run `:MarkdownTableDisableAutoPreview` from Reader and confirm it disables
+  automatic rendering for the backing Source buffer.
+- Confirm Inline restores window-local `wrap`, `conceallevel`, and
+  `concealcursor` when leaving the buffer or clearing the view.
+- Confirm full Inline and viewport-sliced Inline scrolling/top/bottom commands.
+- Confirm wrapped header continuation rows retain the Header highlight in both
+  Inline replace and insert modes.
+- Scroll an Inline viewport, call `setup()` again, and confirm the stale viewport
+  offset is not retained.
+- Change Reader window options through a repeated `setup()` call and confirm an
+  already open Reader adopts them; confirm a delayed pre-setup refresh cannot
+  overwrite the new configuration.
+- Confirm Float opens, scrolls, follows link metadata, and closes with `q`.
+
+### Parsing, Performance, Theme, And Filetypes
+
+- Confirm fenced table-shaped text is ignored, including backtick and tilde
+  fences.
+- Confirm escaped pipes and pipes inside single/multiple-backtick code spans.
+- Confirm invalid delimiter rows and adjacent pipe-like prose are rejected.
+- Exercise the large invalid-pipe regression fixture and verify editing remains
+  responsive.
+- Render a long table and verify border highlighting does not create one extmark
+  per border character.
+- Switch colorschemes and confirm semantic table highlights are reapplied.
+- Confirm lazy-loading and rendering for `markdown`, `quarto`, and `rmd`.
+- Confirm coexistence with `render-markdown.nvim` when its
+  `pipe_table.enabled` is `false`.
+- Run `:checkhealth markdown-table-wrap` in the representative setup.
+
+Record the Neovim version, OS, terminal/UI, colorscheme, and any manual failures
+in the release PR or release issue.
+
+## 5. Verify CI On `master`
+
+Push the release-preparation commit normally and wait for every GitHub Actions
+matrix job to pass. Do not tag a local commit that is not yet present on
+`origin/master`.
+
+Useful checks with GitHub CLI, if installed:
+
+```sh
+gh run list --branch master --limit 5
+gh run view --log-failed
+```
+
+Before tagging:
+
+```sh
+git status --short
+git rev-parse HEAD
+git rev-parse origin/master
+```
+
+The final two commit IDs must match and `git status --short` must be empty.
+
+## 6. Tag v0.2.2
+
+Create an annotated tag on the verified `master` commit:
+
+```sh
+git tag -a v0.2.2 -m "markdown-table-wrap.nvim v0.2.2"
+git show --stat v0.2.2
+git push origin v0.2.2
+```
+
+Never move or reuse a published tag. If a release contains a defect, prepare a
+new patch release such as v0.2.3.
+
+## 7. Publish The GitHub Release
+
+Create a release from the existing tag:
+
+```sh
+gh release create v0.2.2 \
+  --title "markdown-table-wrap.nvim v0.2.2" \
+  --notes-file /path/to/release-notes.md
+```
+
+The notes should be derived from the v0.2.2 CHANGELOG entry and should state
+the two intentional default changes prominently:
+
+- Reader automatically opens only for supported buffers that contain a table;
+  users can set `reader.auto_open = "always"` for the previous behavior.
+- Source-buffer `gx` mapping is opt-in with `map_gx = true`; default setup leaves
+  existing mappings untouched.
+
+The real media currently tracked in this repository are:
+
+- `docs/01-inline-tokyonight.png`
+- `docs/02-inline-scroll.gif`
+- `docs/02b-inline-full-toggle.png`
+- `docs/03-floating-long-table.png`
+
+Use only those files unless new media is committed and reviewed first. The
+plugin itself needs no compiled archive or binary release asset; lazy.nvim
+installs directly from the Git tag.
+
+## 8. Verify The Published Tag
+
+After publishing:
+
+1. Open the GitHub release and confirm its tag and target commit.
+2. Install from a clean plugin-manager cache using the public specification:
+
+   ```lua
+   return {
+     {
+       "ice345/markdown-table-wrap.nvim",
+       version = "v0.2.2",
+       ft = { "markdown", "quarto", "rmd" },
+       opts = {},
+     },
+   }
+   ```
+
+3. Run `:checkhealth markdown-table-wrap`.
+4. Open one table-free Markdown file and one file with a table.
+5. Confirm `require("markdown-table-wrap").version` reports `0.2.2`.
+6. Confirm README and Vim help match the installed tag rather than unreleased
+   `master` behavior.
+
+## v0.2.2 Release Notes Draft
+
+### markdown-table-wrap.nvim v0.2.2
+
+v0.2.2 is a stability and editor-coexistence release. It keeps the existing
+Reader/Inline/Float workflow while making default setup less invasive and
+large-document refreshes more predictable.
 
 Highlights:
 
-- Reader now forwards `:w`, `:wq`, `:x`, and `ZZ` to the backing Markdown
-  buffer, so saving does not require manually returning to Source.
-- Adds `:MarkdownTableToggleInline` for switching from Reader or Source into
-  an editable inline table view.
-- Avoids rendering table-shaped examples inside fenced code blocks.
-- Fixes cell navigation for double-backtick inline code containing pipes.
-- Makes table-aware `gx` available when LazyVim loads the plugin after a
-  Markdown buffer's FileType event.
-- Validates malformed nested configuration values before rendering.
-- Expands the test suite and CI coverage to Neovim v0.10.4 and stable.
+- Reader now automatically opens only when a supported buffer contains a table.
+  Set `reader.auto_open = "always"` to retain the earlier all-document Reader
+  behavior.
+- `map_gx` now defaults to `false`, preserving native and user mappings in
+  Source buffers. Table-aware link opening remains available through
+  `:MarkdownTableOpenLink`, Reader links, or explicit opt-in.
+- Interactive view state and deferred refresh work are isolated by buffer, so
+  commands or edits in one document do not change another document's mode.
+- Table discovery avoids the previous quadratic worst case on long runs of
+  pipe-like text.
+- Top-level parsing now accepts up to three spaces of indentation, missing-cell
+  body rows, and arbitrary-length matching backtick spans while terminating
+  safely at new Markdown block starts.
+- Continuous border highlight spans reduce Reader extmark counts for large
+  tables.
+- Inline window options are restored when the view is cleared or left.
+- Table highlight groups are reapplied after `:colorscheme` changes.
+- Standard Neovim `rmd` filetype detection is supported, and public installation
+  examples load `markdown`, `quarto`, and `rmd`.
+- `get_buffer_config(bufnr)` and `get_preview_mode(bufnr)` expose effective
+  per-buffer view configuration for integrations and diagnostics.
+- Custom theme presets present on `master` after v0.2.1 are included in the
+  patch release.
 
-Known limitations:
+Known scope:
 
-- Inline mode remains dependent on terminal/compositor/extmark behavior. Use
-  Reader for the most stable view when native prose wrapping is enabled.
-- The plugin focuses on pipe tables; it does not replace general Markdown
-  rendering provided by render-markdown.nvim.
+- Inline mode still depends on terminal/compositor behavior around conceal,
+  virtual text, virtual lines, and soft wrapping. Reader remains the most stable
+  view for wide tables.
+- The parser targets common GFM pipe tables; broader GFM conformance and
+  optional Tree-sitter discovery are planned for v0.3.
+- The plugin remains table-focused and does not replace a general Markdown
+  renderer.
 
-### markdown-table-wrap.nvim v0.2.0
+## Future Releases
 
-This release introduces a stable full-document Reader for Markdown tables.
+For every later release, replace the previous/next version values in this guide,
+use the relevant milestone gate in [ROADMAP.md](ROADMAP.md), and repeat the same
+sequence:
 
-Highlights:
-
-- Adds `preview_mode = "reader"`, which renders every Markdown table without requiring cursor focus.
-- Uses real Unicode buffer lines for rendered tables, avoiding raw pipe leakage when ordinary Markdown `wrap` is enabled.
-- Keeps the Markdown source buffer untouched and read-only only in Reader mode.
-- Allows Visual selection and yank directly from rendered table lines while keeping Reader active.
-- Returns to the mapped source line for `i`, `a`, `I`, `A`, `o`, and `O`, then reopens Reader after editing.
-- Adds `:MarkdownTableReader`, `:MarkdownTableToggleReader`, and `:MarkdownTableEditSource`.
-- Adds `fit_to_window = true` and accounts for the window text offset when allocating columns.
-- Preserves inline and floating modes for users who prefer source-position-preserving overlays or focused previews.
-- Adds Reader lifecycle, width, link, and unsaved-buffer regression tests.
-
-Known limitations:
-
-- Inline mode still uses virtual text and virtual lines, so Reader mode is recommended when native prose wrapping and stable table rendering are both required.
-- The plugin remains focused on Markdown pipe tables and does not replace general Markdown rendering.
+1. Freeze scope.
+2. Align version, documentation, and tests.
+3. Pass automation and the release-specific manual matrix.
+4. Push the release commit to `origin/master` and wait for CI.
+5. Create a new annotated tag.
+6. Publish matching GitHub release notes.
+7. Verify a clean installation from the public tag.

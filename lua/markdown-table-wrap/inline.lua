@@ -56,7 +56,7 @@ local function append_chunk(chunks, text, hl_group)
   end
 end
 
-local function semantic_chunks(line, line_index)
+local function semantic_chunks(line, line_index, is_header)
   local chunks = {}
   local index = 1
 
@@ -88,7 +88,7 @@ local function semantic_chunks(line, line_index)
       local hl_group
       if border_chars[ch] then
         hl_group = "MarkdownTableWrapBorder"
-      elseif line_index == 2 then
+      elseif is_header or line_index == 2 then
         hl_group = "MarkdownTableWrapHeader"
       else
         hl_group = "MarkdownTableWrapInline"
@@ -109,8 +109,9 @@ local function semantic_chunks(line, line_index)
 end
 
 local function chunks_from_line_object(line_obj, line_index)
+  local is_header = type(line_obj) == "table" and line_obj.is_header == true
   if type(line_obj) ~= "table" or not line_obj.chunks or #line_obj.chunks == 0 then
-    return semantic_chunks(type(line_obj) == "table" and line_obj.text or line_obj, line_index)
+    return semantic_chunks(type(line_obj) == "table" and line_obj.text or line_obj, line_index, is_header)
   end
 
   local result = {}
@@ -122,7 +123,7 @@ local function chunks_from_line_object(line_obj, line_index)
 
   for _, styled in ipairs(sorted) do
     if cursor < styled.start_col then
-      vim.list_extend(result, semantic_chunks(line_obj.text:sub(cursor + 1, styled.start_col), line_index))
+      vim.list_extend(result, semantic_chunks(line_obj.text:sub(cursor + 1, styled.start_col), line_index, is_header))
     end
 
     table.insert(result, {
@@ -133,7 +134,7 @@ local function chunks_from_line_object(line_obj, line_index)
   end
 
   if cursor < #line_obj.text then
-    vim.list_extend(result, semantic_chunks(line_obj.text:sub(cursor + 1), line_index))
+    vim.list_extend(result, semantic_chunks(line_obj.text:sub(cursor + 1), line_index, is_header))
   end
 
   return result
@@ -352,7 +353,7 @@ local function show_insert(bufnr, table_info, config, rendered)
   local above = config.inline_position ~= "below"
 
   vim.api.nvim_buf_set_extmark(bufnr, namespace, target_line, 0, {
-    virt_lines = virt_lines(rendered.lines),
+    virt_lines = virt_lines(rendered.line_objects or rendered.lines),
     virt_lines_above = above,
     right_gravity = false,
     priority = 200,
@@ -379,6 +380,17 @@ function M.clear(bufnr)
   active_tables[bufnr] = nil
   active_configs[bufnr] = nil
   restore_render_for_buffer(bufnr)
+end
+
+function M.detach_window(winid)
+  winid = winid or vim.api.nvim_get_current_win()
+  restore_render_window(winid)
+end
+
+function M.dispose(bufnr)
+  bufnr = normalize_bufnr(bufnr)
+  M.clear(bufnr)
+  view_offsets[bufnr] = nil
 end
 
 function M.reset_view(bufnr)

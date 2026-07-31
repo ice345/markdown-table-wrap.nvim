@@ -144,6 +144,9 @@ function M.apply(config)
   for key, group in pairs(groups) do
     local base = type(preset[key]) == "table" and preset[key] or {}
     local override = type(overrides[key]) == "table" and overrides[key] or {}
+    if next(override) ~= nil and (base.link ~= nil or override.link ~= nil) then
+      base = {}
+    end
     local spec = vim.tbl_deep_extend("force", base, override)
     vim.api.nvim_set_hl(0, group, normalize_spec(spec))
   end

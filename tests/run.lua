@@ -20,6 +20,7 @@ local specs = {
   "tests.spec.nav_spec",
   "tests.spec.mode_spec",
   "tests.spec.system_spec",
+  "tests.spec.lifecycle_spec",
 }
 
 for _, spec in ipairs(specs) do

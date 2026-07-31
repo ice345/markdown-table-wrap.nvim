@@ -243,3 +243,79 @@ h.test("render respects preferred widths when fit-to-window is disabled", functi
     )
   end)
 end)
+
+h.test("render highlights every wrapped header line as a header", function()
+  local parser = require("markdown-table-wrap.parser")
+  local render = require("markdown-table-wrap.render")
+
+  h.with_buffer({
+    "| a header that wraps | B |",
+    "| --- | --- |",
+    "| value | other |",
+  }, function(source_buf)
+    local parsed = parser.parse_at_cursor(source_buf, 3)
+    local rendered = render.render_table(parsed, {
+      max_width_ratio = 1,
+      min_col_width = 4,
+      max_col_width = 6,
+      use_unicode_border = true,
+      table_border = "rounded",
+      row_separator = true,
+    })
+
+    local header_lines = 0
+    for _, line_obj in ipairs(rendered.line_objects) do
+      if line_obj.is_header then
+        header_lines = header_lines + 1
+      end
+    end
+    h.assert_true("header wraps across multiple rendered lines", header_lines > 1)
+
+    local rendered_buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(rendered_buf, 0, -1, false, rendered.lines)
+    local namespace = vim.api.nvim_create_namespace("markdown-table-wrap-test-wrapped-header")
+    render.apply_highlights(rendered_buf, rendered.line_objects, {}, { namespace = namespace })
+
+    local marks = vim.api.nvim_buf_get_extmarks(rendered_buf, namespace, 0, -1, { details = true })
+    local highlighted_header_lines = 0
+    for _, mark in ipairs(marks) do
+      local details = mark[4]
+      if details.priority == 10 and details.hl_group == "MarkdownTableWrapHeader" then
+        highlighted_header_lines = highlighted_header_lines + 1
+      end
+    end
+
+    h.assert_eq("every wrapped header line uses header highlight", highlighted_header_lines, header_lines)
+    vim.api.nvim_buf_delete(rendered_buf, { force = true })
+  end)
+end)
+
+h.test("render merges contiguous border highlights for large tables", function()
+  local render = require("markdown-table-wrap.render")
+  local line_count = 1000
+  local lines = {}
+  local line_objects = {}
+
+  for _ = 1, line_count do
+    local line =
+      "├────────────────────────┼────────────────────────┤"
+    table.insert(lines, line)
+    table.insert(line_objects, { text = line, chunks = {} })
+  end
+
+  h.with_buffer(lines, function(buf)
+    local namespace = vim.api.nvim_create_namespace("markdown-table-wrap-test-border-ranges")
+    render.apply_highlights(buf, line_objects, {}, { namespace = namespace })
+
+    local marks = vim.api.nvim_buf_get_extmarks(buf, namespace, 0, -1, { details = true })
+    local border_marks = 0
+    for _, mark in ipairs(marks) do
+      if mark[4].hl_group == "MarkdownTableWrapBorder" then
+        border_marks = border_marks + 1
+      end
+    end
+
+    h.assert_eq("one merged border range per rendered line", border_marks, line_count)
+    h.assert_true("extmark count stays linear with a small constant", #marks <= line_count * 2)
+  end)
+end)

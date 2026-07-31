@@ -14,10 +14,10 @@ were added:
 
 | Area | Specs | Main regression risks covered |
 | --- | --- | --- |
-| GFM parsing | `parser_spec.lua` | delimiter validation, escaped pipes, multi-backtick code, fenced code blocks, adjacent prose, multiple tables |
+| GFM parsing | `parser_spec.lua` | delimiter validation, escaped/optional outer pipes, GFM missing-cell rows, fenced and block boundaries, linear large-document scanning |
 | Inline Markdown | `markdown_spec.lua`, `wrap_spec.lua` | code, emphasis, links, icons, hard breaks, CJK width, preferred wrap boundaries, metadata preservation |
 | Geometry | `width_spec.lua`, `render_spec.lua` | display width, padding, alignment, border variants, source-row mapping, fit-to-window and intentional overflow |
-| Neovim views | `inline_spec.lua`, `reader_spec.lua`, `mode_spec.lua` | conceal/extmarks, wrap scope, viewport scrolling, floats, Reader refresh, save forwarding, buffer cleanup, view toggles |
+| Neovim views | `inline_spec.lua`, `reader_spec.lua`, `mode_spec.lua`, `lifecycle_spec.lua` | conceal/extmarks, wrap scope, viewport scrolling, per-buffer debounce/state, window option restoration, Reader policy, buffer cleanup, view toggles |
 | Interaction | `nav_spec.lua`, `config_spec.lua`, `system_spec.lua` | cell navigation, commands, lazy-loading timing, configuration validation, filetype boundaries |
 | Themes | `theme_spec.lua` | presets, overrides, auto-detection, and theme files |
 

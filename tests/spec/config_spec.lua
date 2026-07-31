@@ -68,6 +68,48 @@ h.test("setup installs gx when Markdown filetype predates plugin loading", funct
   end)
 end)
 
+h.test("safe defaults leave gx untouched and normalize Reader options", function()
+  local plugin = require("markdown-table-wrap")
+
+  h.with_buffer({ "ordinary Markdown prose" }, function(buf)
+    vim.bo[buf].filetype = "markdown"
+    plugin.setup({
+      auto_preview = false,
+      reader = {
+        auto_open = "invalid",
+        conceallevel = 2.8,
+        concealcursor = "invalid",
+      },
+    })
+
+    local plugin_mapping = false
+    for _, item in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+      if item.lhs == "gx" and item.desc == "Open Markdown table link" then
+        plugin_mapping = true
+      end
+    end
+
+    h.assert_false("gx override is opt-in", plugin.config.map_gx)
+    h.assert_false("default setup does not add a buffer-local gx", plugin_mapping)
+    h.assert_eq("invalid Reader auto-open falls back", plugin.config.reader.auto_open, "has_table")
+    h.assert_eq("Reader conceallevel is an integer", plugin.config.reader.conceallevel, 2)
+    h.assert_eq("invalid concealcursor falls back", plugin.config.reader.concealcursor, "nvc")
+  end)
+end)
+
+h.test("ColorScheme reapplies configured highlights", function()
+  local plugin = require("markdown-table-wrap")
+  plugin.setup({
+    auto_preview = false,
+    highlights = { border = { fg = "#123456" } },
+  })
+
+  vim.api.nvim_set_hl(0, "MarkdownTableWrapBorder", { fg = "#ffffff" })
+  vim.api.nvim_exec_autocmds("ColorScheme", {})
+  local highlight = vim.api.nvim_get_hl(0, { name = "MarkdownTableWrapBorder", link = false })
+  h.assert_eq("configured border color is restored", highlight.fg, 0x123456)
+end)
+
 h.test("all documented commands exist after setup", function()
   local plugin = require("markdown-table-wrap")
   plugin.setup({ auto_preview = false })

@@ -346,6 +346,20 @@ function M.refresh(reader_bufnr)
   return true
 end
 
+function M.reconfigure(reader_bufnr, config)
+  reader_bufnr = normalize_bufnr(reader_bufnr)
+  local state = states[reader_bufnr]
+  if not state then
+    return false
+  end
+
+  state.config = config
+  if #vim.fn.win_findbuf(reader_bufnr) == 0 then
+    return true
+  end
+  return M.refresh(reader_bufnr)
+end
+
 function M.open_link(reader_bufnr)
   reader_bufnr = normalize_bufnr(reader_bufnr)
   local state = states[reader_bufnr]
