@@ -79,6 +79,24 @@ local groups = {
   blank = "MarkdownTableWrapBlank",
 }
 
+-- A linked highlight can carry a background from the user's colorscheme. That
+-- is useful for standalone UI elements, but it turns every virtual-text cell
+-- into a filled rectangle when it is used for table content. Keep semantic
+-- content transparent unless a theme explicitly supplies a background.
+local transparent_content = {
+  inline = true,
+  source = true,
+  header = true,
+  code = true,
+  link = true,
+  bold = true,
+  italic = true,
+  strike = true,
+  wiki_link = true,
+  image = true,
+  blank = true,
+}
+
 local function detect_preset()
   local colors_name = (vim.g.colors_name or ""):lower()
 
@@ -106,6 +124,27 @@ local function normalize_spec(spec)
     return { link = "Normal" }
   end
   return spec
+end
+
+local function transparent_spec(spec, key)
+  if not transparent_content[key] or type(spec) ~= "table" then
+    return spec
+  end
+
+  -- An explicit background is an opt-in. This also keeps custom palettes such
+  -- as a highlighted inline-code background working as documented.
+  if spec.bg ~= nil or spec.ctermbg ~= nil or spec.link == nil then
+    return spec
+  end
+
+  local linked = vim.api.nvim_get_hl(0, { name = spec.link, link = false })
+  linked.bg = nil
+  linked.ctermbg = nil
+  linked.link = nil
+
+  local result = vim.deepcopy(spec)
+  result.link = nil
+  return vim.tbl_deep_extend("force", linked, result)
 end
 
 local function load_theme_file(config, preset_name)
@@ -148,7 +187,8 @@ function M.apply(config)
       base = {}
     end
     local spec = vim.tbl_deep_extend("force", base, override)
-    vim.api.nvim_set_hl(0, group, normalize_spec(spec))
+    spec = normalize_spec(spec)
+    vim.api.nvim_set_hl(0, group, transparent_spec(spec, key))
   end
 end
 

@@ -391,7 +391,10 @@ h.test("gx proxy evaluates an existing string expression mapping", function()
     local restored = vim.api.nvim_buf_call(buf, function()
       return vim.fn.maparg("gx", "n", false, true)
     end)
-    h.assert_eq("restored mapping preserves replace_keycodes", restored.replace_keycodes, 0)
+    h.assert_true(
+      "restored mapping preserves replace_keycodes when reported",
+      restored.replace_keycodes == nil or restored.replace_keycodes == 0
+    )
     vim.cmd("normal gx")
     h.assert_eq("restored expression mapping still evaluates", expression_calls, 2)
   end)

@@ -465,7 +465,7 @@ require("markdown-table-wrap").setup({
       italic = { fg = "#cba6f7", italic = true },
       strike = { fg = "#f38ba8", strikethrough = true },
       mark = { fg = "#1e1e2e", bg = "#f9e2af" },
-      blank = { link = "Normal" },
+      blank = {},
     },
   },
 })
@@ -518,6 +518,13 @@ Semantic highlight keys:
 - `strike`
 - `mark`
 - `blank`
+
+Content highlight keys are background-transparent when they only link to an
+existing highlight group. This prevents Inline replace mode from turning each
+cell into a filled rectangle when `Normal`, `Title`, or another linked group
+has a colorscheme background. Add an explicit `bg` to a semantic key when a
+filled background is intentional; `blank` is only the padding highlight and
+can usually be left as `{}`.
 
 ## Lua API
 

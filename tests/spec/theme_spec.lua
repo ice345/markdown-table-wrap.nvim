@@ -2,6 +2,19 @@ local h = require("tests.helpers")
 
 h.test("theme presets and overrides", function()
   local theme = require("markdown-table-wrap.theme")
+  local previous_normal = vim.api.nvim_get_hl(0, { name = "Normal", link = false })
+  local previous_title = vim.api.nvim_get_hl(0, { name = "Title", link = false })
+  vim.api.nvim_set_hl(0, "Normal", { fg = "#c0caf5", bg = "#1a1b26" })
+  vim.api.nvim_set_hl(0, "Title", { fg = "#7aa2f7", bg = "#202030", bold = true })
+
+  theme.apply({ highlight_preset = "default" })
+  local default_inline = vim.api.nvim_get_hl(0, { name = "MarkdownTableWrapInline", link = false })
+  local default_header = vim.api.nvim_get_hl(0, { name = "MarkdownTableWrapHeader", link = false })
+  local default_blank = vim.api.nvim_get_hl(0, { name = "MarkdownTableWrapBlank", link = false })
+  h.assert_eq("default inline does not inherit a background", default_inline.bg, nil)
+  h.assert_eq("default header does not inherit a background", default_header.bg, nil)
+  h.assert_eq("default padding does not inherit a background", default_blank.bg, nil)
+
   theme.apply({
     highlight_preset = "tokyonight",
     highlights = {
@@ -64,13 +77,27 @@ h.test("theme presets and overrides", function()
       catppuccin2 = {
         border = { fg = "#123456" },
         inline = { link = "Normal" },
+        blank = { link = "Normal" },
       },
     },
   })
   theme.apply(plugin.config)
   local configured_border = vim.api.nvim_get_hl(0, { name = "MarkdownTableWrapBorder" })
+  local configured_inline = vim.api.nvim_get_hl(0, { name = "MarkdownTableWrapInline", link = false })
+  local configured_blank = vim.api.nvim_get_hl(0, { name = "MarkdownTableWrapBlank", link = false })
   h.assert_eq("setup preserves custom preset name", plugin.config.highlight_preset, "catppuccin2")
   h.assert_eq("setup applies custom preset", configured_border.fg, tonumber("123456", 16))
+  h.assert_eq("custom linked inline stays transparent", configured_inline.bg, nil)
+  h.assert_eq("custom linked padding stays transparent", configured_blank.bg, nil)
+
+  theme.apply({
+    highlight_preset = "default",
+    highlights = {
+      inline = { fg = "#ffffff", bg = "#101010" },
+    },
+  })
+  local explicit_background = vim.api.nvim_get_hl(0, { name = "MarkdownTableWrapInline", link = false })
+  h.assert_eq("explicit inline background remains opt-in", explicit_background.bg, tonumber("101010", 16))
 
   local theme_dir = vim.fn.tempname()
   vim.fn.mkdir(theme_dir, "p")
@@ -94,4 +121,7 @@ h.test("theme presets and overrides", function()
   theme.apply({ highlight_preset = "file_theme", theme_dir = theme_dir })
   local image = vim.api.nvim_get_hl(0, { name = "MarkdownTableWrapImage" })
   h.assert_eq("theme loaded from directory", image.fg, tonumber("0c0c0c", 16))
+
+  vim.api.nvim_set_hl(0, "Normal", previous_normal)
+  vim.api.nvim_set_hl(0, "Title", previous_title)
 end)

@@ -468,6 +468,12 @@ Highlight groups:
 Semantic highlight groups are reapplied after ColorScheme. A direct custom
 spec replaces the preset's linked base for that semantic key.
 
+Content highlight keys are background-transparent when they only link to an
+existing highlight group. This prevents Inline replace mode from drawing a
+filled rectangle for every cell when a colorscheme gives Normal, Title, or
+another linked group a background. Add an explicit `bg` to opt into a filled
+background; `blank` is only the padding highlight and can usually be `{}`.
+
 Override by semantic key:
 >
   require("markdown-table-wrap").setup({
