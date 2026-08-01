@@ -49,6 +49,40 @@ h.test("render emits styled chunks", function()
   end)
 end)
 
+h.test("render keeps borders aligned for code-wrapped link labels", function()
+  local parser = require("markdown-table-wrap.parser")
+  local render = require("markdown-table-wrap.render")
+
+  h.with_buffer({
+    "| Week | Overview | Day 1 | Done |",
+    "| --- | --- | --- | --- |",
+    "| 1 | [overview](curriculum/week-01/overview.md) | [day-01](curriculum/week-01/day-01.md) | first |",
+    "| 2 | [`overview`](curriculum/week-02/overview.md) | [`day-01`](curriculum/week-02/day-02.md) | second |",
+  }, function(buf)
+    vim.api.nvim_win_set_width(0, 100)
+    local parsed = parser.parse_at_cursor(buf, 3)
+    local rendered = render.render_table(parsed, {
+      max_width_ratio = 1,
+      min_col_width = 4,
+      max_col_width = 40,
+      fit_to_window = true,
+      use_unicode_border = true,
+      table_border = "rounded",
+      row_separator = false,
+    })
+
+    local first_body = rendered.line_objects[4].text
+    local second_body = rendered.line_objects[5].text
+    h.assert_eq("code-wrapped link has no concealed delimiters", second_body:find("`", 1, true), nil)
+    h.assert_eq(
+      "code-wrapped and plain rows have equal width",
+      vim.api.nvim_strwidth(first_body),
+      vim.api.nvim_strwidth(second_body)
+    )
+    h.assert_eq("code-wrapped row keeps table width", vim.api.nvim_strwidth(second_body), rendered.width)
+  end)
+end)
+
 h.test("render output golden snapshot", function()
   local parser = require("markdown-table-wrap.parser")
   local render = require("markdown-table-wrap.render")

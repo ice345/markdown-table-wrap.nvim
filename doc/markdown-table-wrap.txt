@@ -474,6 +474,10 @@ filled rectangle for every cell when a colorscheme gives Normal, Title, or
 another linked group a background. Add an explicit `bg` to opt into a filled
 background; `blank` is only the padding highlight and can usually be `{}`.
 
+Inline-code delimiters inside link or image labels are removed from the
+display text before width calculation. This keeps concealed backticks from
+shifting the rendered table separators in Inline mode.
+
 Override by semantic key:
 >
   require("markdown-table-wrap").setup({

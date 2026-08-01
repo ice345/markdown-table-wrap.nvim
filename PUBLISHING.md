@@ -9,8 +9,8 @@ rename its development branch as part of a release.
 - Repository: `ice345/markdown-table-wrap.nvim`
 - Remote: `origin` (`git@github.com:ice345/markdown-table-wrap.nvim.git`)
 - Development/release branch: `master`
-- Latest published tag before this release: `v0.2.1`
-- Next planned release: `v0.2.2`
+- Latest published tag before this release: `v0.2.2`
+- Next planned release: `v0.2.3`
 - Supported Neovim baseline: 0.10+
 
 Verify these values rather than assuming the local checkout is current:
@@ -28,9 +28,9 @@ up to date with `origin/master`.
 
 ## 1. Freeze The Release Scope
 
-Before preparing v0.2.2:
+Before preparing v0.2.3:
 
-1. Stop adding features not listed in the v0.2.2 CHANGELOG section.
+1. Stop adding features not listed in the v0.2.3 CHANGELOG section.
 2. Review every commit since the previous release:
 
    ```sh
@@ -46,13 +46,13 @@ Before preparing v0.2.2:
 
 ## 2. Align Version And Documentation
 
-For v0.2.2, all of the following must agree:
+For v0.2.3, all of the following must agree:
 
 - `M.version` in `lua/markdown-table-wrap/init.lua`
 - The top release in `CHANGELOG.md`
 - README configuration/default behavior
 - `doc/markdown-table-wrap.txt`
-- The annotated Git tag `v0.2.2`
+- The annotated Git tag `v0.2.3`
 - The GitHub release title
 
 Search for stale version/default references:
@@ -108,7 +108,7 @@ nvim --headless -u NONE \
 Open every relative link in README, CHANGELOG, PUBLISHING, and ROADMAP during
 release review, and confirm every referenced file exists in the checkout.
 
-## 4. Run The v0.2.2 Manual Matrix
+## 4. Run The v0.2.3 Manual Matrix
 
 Use a saved Markdown file with no table, one short table, one very wide table,
 several tables, links, escaped pipes, code spans, and mixed CJK/English text.
@@ -152,6 +152,10 @@ several tables, links, escaped pipes, code spans, and mixed CJK/English text.
 - Confirm Inline restores window-local `wrap`, `conceallevel`, and
   `concealcursor` when leaving the buffer or clearing the view.
 - Confirm full Inline and viewport-sliced Inline scrolling/top/bottom commands.
+- Confirm linked semantic content highlights do not fill every Inline cell when
+  their source group has a background; verify an explicit `bg` still opts in.
+- Confirm code-wrapped link and image labels keep Inline separators aligned,
+  including labels containing CJK text and multiple backticks.
 - Confirm wrapped header continuation rows retain the Header highlight in both
   Inline replace and insert modes.
 - Scroll an Inline viewport, call `setup()` again, and confirm the stale viewport
@@ -203,14 +207,14 @@ git rev-parse origin/master
 
 The final two commit IDs must match and `git status --short` must be empty.
 
-## 6. Tag v0.2.2
+## 6. Tag v0.2.3
 
 Create an annotated tag on the verified `master` commit:
 
 ```sh
-git tag -a v0.2.2 -m "markdown-table-wrap.nvim v0.2.2"
-git show --stat v0.2.2
-git push origin v0.2.2
+git tag -a v0.2.3 -m "markdown-table-wrap.nvim v0.2.3"
+git show --stat v0.2.3
+git push origin v0.2.3
 ```
 
 Never move or reuse a published tag. If a release contains a defect, prepare a
@@ -221,8 +225,8 @@ new patch release such as v0.2.3.
 Create a release from the existing tag:
 
 ```sh
-gh release create v0.2.2 \
-  --title "markdown-table-wrap.nvim v0.2.2" \
+gh release create v0.2.3 \
+  --title "markdown-table-wrap.nvim v0.2.3" \
   --notes-file /path/to/release-notes.md
 ```
 
@@ -256,7 +260,7 @@ After publishing:
    return {
      {
        "ice345/markdown-table-wrap.nvim",
-       version = "v0.2.2",
+       version = "v0.2.3",
        ft = { "markdown", "quarto", "rmd" },
        opts = {},
      },
@@ -265,9 +269,32 @@ After publishing:
 
 3. Run `:checkhealth markdown-table-wrap`.
 4. Open one table-free Markdown file and one file with a table.
-5. Confirm `require("markdown-table-wrap").version` reports `0.2.2`.
+5. Confirm `require("markdown-table-wrap").version` reports `0.2.3`.
 6. Confirm README and Vim help match the installed tag rather than unreleased
    `master` behavior.
+
+## v0.2.3 Release Notes Draft
+
+### markdown-table-wrap.nvim v0.2.3
+
+v0.2.3 is a focused Inline rendering correction release.
+
+Highlights:
+
+- Linked semantic content highlights are background-transparent by default, so
+  colorscheme backgrounds no longer turn every Inline cell into a filled
+  rectangle. Add an explicit `bg` when a filled background is intentional.
+- Inline-code delimiters inside link and image labels are removed before width
+  calculation, keeping concealed backticks from shifting table separators.
+- Regression coverage now exercises the linked-highlight background policy and
+  code-wrapped links in rendered tables.
+
+Known scope:
+
+- Inline mode still depends on terminal/compositor behavior around conceal,
+  virtual text, virtual lines, and soft wrapping. Reader remains the most stable
+  view for wide tables.
+- This patch release does not change the parser's supported Markdown dialect.
 
 ## v0.2.2 Release Notes Draft
 

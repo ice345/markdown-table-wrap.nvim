@@ -2,13 +2,15 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
-## Unreleased
+## 0.2.3 - Inline Rendering Corrections
 
 ### Fixed
 
 - Keep linked semantic table highlights background-transparent so Inline replace
   mode does not render black or colorscheme-filled rectangles inside cells.
   Explicit `bg` values remain supported for intentional cell or token fills.
+- Remove paired inline-code delimiters from link and image labels before width
+  calculation so concealed backticks cannot shift Inline table separators.
 
 ## 0.2.2 - Stability And Editor Coexistence
 

@@ -54,6 +54,7 @@ Floating preview for long table reading:
 - Restores window-local `wrap`, `conceallevel`, and `concealcursor` after clearing or leaving Inline replace mode.
 - Highlights rendered borders, headers, inline code spans, and Markdown links separately.
 - Renders common inline Markdown inside cells to plain display text, including inline code, emphasis, strikethrough, and links.
+- Keeps code-wrapped link labels aligned when Markdown conceal hides their backticks.
 - Supports `==highlight==`, wiki links, image alt text, and URL-pattern-based link icons.
 - Theme presets for Tokyo Night, Catppuccin, a neutral default, and a render-markdown-inspired palette.
 - Supports inline custom themes and loading custom theme files from a theme directory.
@@ -528,8 +529,7 @@ can usually be left as `{}`.
 
 ## Lua API
 
-The v0.2.2 inspection helpers expose effective buffer-local state without
-changing it:
+The inspection helpers expose effective buffer-local state without changing it:
 
 ```lua
 local table_wrap = require("markdown-table-wrap")
@@ -564,6 +564,10 @@ The current rendering model includes:
 - Cached refreshes to avoid unnecessary redraw flicker.
 - Window-local conceal handling with restoration on clear.
 - Semantic highlights for borders, headers, inline code, and links.
+- Background-transparent linked content highlights prevent filled Inline cells
+  unless an explicit `bg` is configured.
+- Code-wrapped link labels keep concealed delimiters out of width calculation
+  so Inline separators remain aligned.
 - Cell navigation commands that understand inline code pipes like `` `a|b` ``.
 - Floating preview is retained for focused table-only inspection.
 - Top-level GFM pipe-table parsing with conservative Markdown block boundaries.

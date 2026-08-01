@@ -8,6 +8,73 @@ local function push_text(parts, text, kind, meta)
   table.insert(parts, { text = text, kind = kind or "text", meta = meta or {} })
 end
 
+local function escaped_at(text, index)
+  local slashes = 0
+  index = index - 1
+
+  while index > 0 and text:sub(index, index) == "\\" do
+    slashes = slashes + 1
+    index = index - 1
+  end
+
+  return slashes % 2 == 1
+end
+
+-- Link labels can contain inline code, for example
+-- ``[`overview`](curriculum/week-01/overview.md)``. Markdown conceal rules
+-- hide those backticks in the editor, so retaining them in the display text
+-- would make the rendered border appear to drift left by two character widths.
+-- Remove only matched, unescaped code delimiters. Unmatched or escaped
+-- backticks stay visible and continue to behave as ordinary label text.
+local function strip_code_delimiters(value)
+  local result = {}
+  local cursor = 1
+
+  while cursor <= #value do
+    local start_col, end_col, ticks = value:find("(`+)", cursor)
+    if not start_col then
+      table.insert(result, value:sub(cursor))
+      break
+    end
+
+    if escaped_at(value, start_col) then
+      table.insert(result, value:sub(cursor, end_col))
+      cursor = end_col + 1
+      goto continue
+    end
+
+    local close_start = nil
+    local close_end = nil
+    local search = end_col + 1
+    while search <= #value do
+      local candidate_start, candidate_end, candidate = value:find("(`+)", search)
+      if not candidate_start then
+        break
+      end
+
+      if not escaped_at(value, candidate_start) and #candidate == #ticks then
+        close_start = candidate_start
+        close_end = candidate_end
+        break
+      end
+      search = candidate_end + 1
+    end
+
+    if not close_start then
+      table.insert(result, value:sub(cursor))
+      break
+    end
+
+    table.insert(result, value:sub(cursor, start_col - 1))
+    table.insert(result, value:sub(end_col + 1, close_start - 1))
+    cursor = close_end + 1
+
+    ::continue::
+  end
+
+  return table.concat(result)
+end
+
 local function earliest_match(text, index)
   local candidates = {}
 
@@ -42,6 +109,10 @@ local function earliest_match(text, index)
       elseif spec.kind == "link" and spec.pattern == "%(([^%)]*)%)%[([^%]]*)%]" then
         value = first
         url = second
+      end
+
+      if spec.kind == "link" or spec.kind == "image" then
+        value = strip_code_delimiters(value)
       end
 
       table.insert(candidates, {

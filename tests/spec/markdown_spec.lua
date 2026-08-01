@@ -70,6 +70,16 @@ h.test("markdown parses multi-backtick inline code", function()
   h.assert_eq("multi-backtick kind", parsed.spans[1].kind, "code")
 end)
 
+h.test("markdown removes concealed code delimiters from link labels", function()
+  local markdown = require("markdown-table-wrap.markdown")
+  local parsed = markdown.parse_inline("[`overview`](curriculum/week-02/overview.md)")
+
+  h.assert_eq("code-wrapped link display text", parsed.text, "overview")
+  h.assert_eq("code-wrapped link span start", parsed.spans[1].start_col, 0)
+  h.assert_eq("code-wrapped link span end", parsed.spans[1].end_col, #"overview")
+  h.assert_eq("code-wrapped link URL", parsed.spans[1].url, "curriculum/week-02/overview.md")
+end)
+
 h.test("markdown hard breaks", function()
   local markdown = require("markdown-table-wrap.markdown")
   h.assert_eq("br break", markdown.inline_to_text("a<br>b"), "a\nb")
