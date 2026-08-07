@@ -168,6 +168,69 @@ h.test("reader gx opens table link metadata", function()
   vim.ui.open = original_open
 end)
 
+h.test("reader gx uses the source fallback only outside rendered links", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  local fallback_calls = 0
+  local fallback_bufnr = nil
+  local fallback_cursor = nil
+  local opened = nil
+  local original_open = vim.ui.open
+  vim.ui.open = function(url)
+    opened = url
+  end
+
+  plugin.setup({ auto_preview = false, preview_mode = "reader" })
+
+  h.with_buffer({
+    "ordinary Markdown prose",
+    "",
+    "| Name | Link |",
+    "| --- | --- |",
+    "| Video | [YouTube](https://youtube.com/watch) |",
+  }, function(source_bufnr)
+    vim.bo[source_bufnr].filetype = "markdown"
+    vim.keymap.set("n", "gx", function()
+      fallback_calls = fallback_calls + 1
+      fallback_bufnr = vim.api.nvim_get_current_buf()
+      fallback_cursor = vim.api.nvim_win_get_cursor(0)
+    end, { buffer = source_bufnr, desc = "Reader gx fallback test" })
+
+    local reader_bufnr = plugin.reader_preview()
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    vim.cmd("normal gx")
+    h.assert_eq("ordinary Reader text invokes source gx once", fallback_calls, 1)
+    h.assert_eq("Reader fallback executes in Source context", fallback_bufnr, source_bufnr)
+    h.assert_deep_eq("Reader fallback receives mapped Source cursor", fallback_cursor, { 1, 0 })
+    h.assert_true("Source-context fallback keeps Reader visible", reader.is_reader(reader_bufnr))
+
+    local state = reader.get_state(reader_bufnr)
+    local target = nil
+    for row, line_object in ipairs(state.line_objects) do
+      for _, chunk in ipairs(type(line_object) == "table" and line_object.chunks or {}) do
+        if chunk.kind == "link" then
+          target = { row, chunk.start_col }
+          break
+        end
+      end
+      if target then
+        break
+      end
+    end
+
+    h.assert_true("Reader rendered target exists", target ~= nil)
+    vim.api.nvim_win_set_cursor(0, target)
+    vim.cmd("normal gx")
+    h.assert_eq("rendered target opens original URL", opened, "https://youtube.com/watch")
+    h.assert_eq("rendered target does not also invoke fallback", fallback_calls, 1)
+
+    plugin.close_reader()
+    plugin.state.paused_buffers[source_bufnr] = nil
+  end)
+
+  vim.ui.open = original_open
+end)
+
 h.test("reader source editing restores the mapped source line", function()
   local plugin = require("markdown-table-wrap")
   local reader = require("markdown-table-wrap.reader")

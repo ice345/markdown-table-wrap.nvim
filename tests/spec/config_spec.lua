@@ -97,6 +97,19 @@ h.test("safe defaults leave gx untouched and normalize Reader options", function
   end)
 end)
 
+h.test("individual Reader and Float keys can be disabled", function()
+  local plugin = require("markdown-table-wrap")
+  plugin.setup({
+    auto_preview = false,
+    mappings = {
+      reader = { close = false, edit = false, open_link = false, insert = false },
+      float = { close = false, open_link = false },
+    },
+  })
+  h.assert_deep_eq("Reader insert keys can be disabled", plugin.config.mappings.reader.insert, {})
+  h.assert_false("Float close keys can be disabled", plugin.config.mappings.float.close)
+end)
+
 h.test("ColorScheme reapplies configured highlights", function()
   local plugin = require("markdown-table-wrap")
   plugin.setup({
@@ -123,6 +136,12 @@ h.test("all documented commands exist after setup", function()
     "MarkdownTableRefresh",
     "MarkdownTableToggleInline",
     "MarkdownTableOpenLink",
+    "MarkdownTableOpen",
+    "MarkdownTableOpenSplit",
+    "MarkdownTableOpenVSplit",
+    "MarkdownTableOpenTab",
+    "MarkdownTableInspect",
+    "MarkdownTableHelp",
     "MarkdownTableScrollDown",
     "MarkdownTableScrollUp",
   }) do

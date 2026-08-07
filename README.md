@@ -42,7 +42,7 @@ Floating preview for long table reading:
 - Can shrink below the preferred column width when many columns must fit on screen.
 - Wraps long cell content inside each column.
 - Supports mixed Chinese, English, and Japanese display widths through `vim.api.nvim_strwidth`.
-- Keeps Markdown inline code spans such as `` `Rc<RefCell<T>>` `` and `` `notes/01-smart-pointers.md` `` intact.
+- Keeps inline code spans intact when they fit; splits only oversized code tokens at display-width-safe character boundaries so narrow panes do not push table borders out of alignment.
 - Keeps pipes from splitting table cells when they occur inside matching code spans with arbitrary backtick-run lengths.
 - Prefers wrapping at spaces, `、`, `，`, `,`, `；`, `;`, and `/`.
 - Renders a Unicode table inline in a replace-like mode.
@@ -135,10 +135,28 @@ return {
       extra_filetypes = {},
       highlights = {},
       map_gx = false,
+      mappings = {
+        reader = {
+          enabled = true,
+          close = "q",
+          edit = "e",
+          open_link = "gx",
+          help = false,
+          insert = { "i", "a", "I", "A", "o", "O" },
+          passthrough = {},
+        },
+        float = {
+          enabled = true,
+          close = { "q", "<Esc>" },
+          open_link = "gx",
+          help = false,
+        },
+      },
       link = {
         icon = "",
         wiki = { icon = " ", highlight = "MarkdownTableWrapWikiLink", scope_highlight = "MarkdownTableWrapWikiLink" },
         image = " ",
+        resolver = nil,
         custom = {
           github = { pattern = "github", icon = " " },
           gitlab = { pattern = "gitlab", icon = "󰮠 " },
@@ -171,7 +189,8 @@ return {
 }
 ```
 
-See [PUBLISHING.md](PUBLISHING.md) for the release flow.
+See [ROADMAP.md](ROADMAP.md) for the mode contracts and development order, and
+[PUBLISHING.md](PUBLISHING.md) for the release flow.
 
 ## Default Behavior
 
@@ -231,6 +250,30 @@ keys = {
 `preview_mode = "reader"` selects the default strategy. `MarkdownTableToggleReader`
 changes the current window between Reader and Source, while
 `MarkdownTableToggleInline` selects Inline for the current editing session.
+
+Session files should restore the canonical Source buffer, not the disposable
+Reader or Float scratch buffer. After plugin setup, normal `auto_preview` and
+`reader.auto_open` policy may recreate the selected view; the plugin does not
+serialize scratch view buffers into the session.
+
+### Read, Edit, Inspect, Troubleshoot
+
+For daily use, five actions cover the normal workflow:
+
+- Read: `:MarkdownTableToggleReader` opens or closes the stable full-document
+  projection.
+- Edit: `:MarkdownTableEditSource` returns to the canonical Markdown buffer.
+- Follow: `:MarkdownTableOpen` opens the target under the cursor relative to
+  the Source file; split, vertical-split, and tab variants are also available.
+- Inspect: `:MarkdownTableInspect` reports the active mode, Source/view
+  identity, cursor mapping, table/cell, width budget, cache, and options.
+- Learn: `:MarkdownTableHelp` shows the configured view keys and command-based
+  exit path, including when local Reader mappings are disabled.
+
+Reader copies rendered Unicode lines; Source and Inline copy the original
+Markdown. Reader search operates on rendered text. File navigation and buffer
+transitions resolve back to Source, while structural edits should be performed
+in Source.
 
 ### Why Reader Avoids Wrap Leaks
 
@@ -297,7 +340,15 @@ inline and floating modes.
 - `:MarkdownTablePrevCell` moves to the previous source cell in the current table row.
 - `:MarkdownTableNextRow` moves to the same source cell in the next table row.
 - `:MarkdownTablePrevRow` moves to the same source cell in the previous table row.
-- `:MarkdownTableOpenLink` opens the first link in the current source table cell.
+- `:MarkdownTableOpen` opens the target under the cursor from Source, Inline,
+  Reader, or Float. Relative paths are based on the Source file.
+- `:MarkdownTableOpenSplit`, `:MarkdownTableOpenVSplit`, and
+  `:MarkdownTableOpenTab` open file targets in the requested layout.
+- `:MarkdownTableOpenLink` is the compatibility alias for
+  `:MarkdownTableOpen`.
+- `:MarkdownTableInspect` shows active Source/view diagnostics suitable for a
+  bug report.
+- `:MarkdownTableHelp` shows common actions and configured view keys.
 - `:MarkdownTableScrollDown` scrolls the rendered table view down without moving through source rows.
 - `:MarkdownTableScrollUp` scrolls the rendered table view up without moving through source rows.
 - `:MarkdownTableScrollTop` jumps the rendered table viewport to the top.
@@ -305,12 +356,13 @@ inline and floating modes.
 
 Press `q` inside Reader to return to Source, or inside the floating preview window to close the float.
 
-Reader provides table-aware `gx` for its rendered links. In Source buffers,
+Reader provides table-aware `gx` for rendered links and delegates ordinary
+positions to the Source mapping captured when Reader opens. In Source buffers,
 `map_gx = false` by default, so the plugin does not replace your existing `gx`
-mapping. Run `:MarkdownTableOpenLink` directly, add your own keymap, or set
+mapping. Run `:MarkdownTableOpen` directly, add your own keymap, or set
 `map_gx = true` to opt into the buffer-local table-aware mapping. The command
-reads the current source table cell and opens the actual URL from
-`[text](url)`, `(text)[url]`, or image links.
+supports URLs, relative/absolute files, anchors, wiki links, images, and
+multiple targets.
 
 ## Configuration
 
@@ -355,10 +407,28 @@ require("markdown-table-wrap").setup({
   extra_filetypes = {},
   highlights = {},
   map_gx = false,
+  mappings = {
+    reader = {
+      enabled = true,
+      close = "q",
+      edit = "e",
+      open_link = "gx",
+      help = false,
+      insert = { "i", "a", "I", "A", "o", "O" },
+      passthrough = {},
+    },
+    float = {
+      enabled = true,
+      close = { "q", "<Esc>" },
+      open_link = "gx",
+      help = false,
+    },
+  },
   link = {
     icon = "",
     wiki = { icon = " ", highlight = "MarkdownTableWrapWikiLink", scope_highlight = "MarkdownTableWrapWikiLink" },
     image = " ",
+    resolver = nil,
     custom = {
       github = { pattern = "github", icon = " " },
       gitlab = { pattern = "gitlab", icon = "󰮠 " },
@@ -403,8 +473,36 @@ Options:
 - `themes`: inline custom theme table keyed by `highlight_preset`.
 - `highlights`: override highlight specs by semantic key.
 - `map_gx`: opt into a buffer-local `gx` mapping for table links in Source buffers. It defaults to `false`, leaving the user's existing mapping untouched; Reader links remain directly openable.
-- `link`: icon configuration for links, wiki links, images, and URL pattern matches.
+- `mappings`: configure or disable Reader/Float local mappings. Set
+  `mappings.reader = false` to install no Reader-local mappings; commands and
+  `<Plug>` actions remain available. `mappings.reader.passthrough` accepts a
+  stable action name or `{ policy = "leave" | "source" | "view" }` for an
+  explicitly captured Source mapping.
+- `link`: icon configuration plus an optional `resolver(target, context,
+  strategy)` callback. Return `true`/`"noop"` when handled, `false` to cancel,
+  or `"edit"`, `"split"`, `"vsplit"`, or `"tab"` to choose built-in file
+  opening.
 - `extra_filetypes`: list of additional filetypes to enable table rendering for. The default is `{}`, meaning the built-in `markdown`, `md`, `quarto`, `rmd`, and `rmarkdown` filetypes render tables.
+
+Reader navigation example without replacing Source mappings globally:
+
+```lua
+require("markdown-table-wrap").setup({
+  mappings = {
+    reader = {
+      passthrough = {
+        H = "previous_buffer",
+        L = "next_buffer",
+        gf = "open",
+      },
+    },
+  },
+})
+```
+
+Named actions leave Reader safely when a real buffer transition is required.
+To delegate a custom Source mapping instead, use for example
+`K = { policy = "source" }` or `K = { policy = "leave" }`.
 
 ```lua
 require("markdown-table-wrap").setup({
@@ -536,6 +634,9 @@ local table_wrap = require("markdown-table-wrap")
 
 local config = table_wrap.get_buffer_config(0)
 local mode = table_wrap.get_preview_mode(0)
+local context = table_wrap.get_state(0)
+local source_bufnr = table_wrap.resolve_source_buffer(0)
+local component = table_wrap.statusline(0)
 ```
 
 - `get_buffer_config(bufnr?)` returns a deep-copied effective configuration for
@@ -543,6 +644,27 @@ local mode = table_wrap.get_preview_mode(0)
   overrides. Omit `bufnr` or pass `0` for the current buffer.
 - `get_preview_mode(bufnr?)` returns the buffer's effective `"reader"`,
   `"inline"`, or `"float"` mode without mutating global setup.
+- `get_state(bufnr?)` returns a deep-copied active context containing the mode,
+  canonical Source, view/window, mapped cursor, table/cell, cache, and effective
+  configuration.
+- `resolve_source_buffer(bufnr?)` returns the canonical Source buffer behind a
+  Reader or Float.
+- `action(name, opts?)` runs the same stable action used by commands and
+  `<Plug>` mappings. See `require("markdown-table-wrap.actions").names()` for
+  the current set.
+- `statusline(bufnr?)` returns a compact string such as `MTW Reader T3:C2`, or
+  an empty string when no valid context exists.
+
+Stable normal-mode `<Plug>` mappings follow the
+`<Plug>(MarkdownTableWrapAction)` form. Actions are `ToggleReader`,
+`ToggleInline`, `EditSource`, `Close`, `Refresh`, `Open`, `OpenSplit`,
+`OpenVSplit`, `OpenTab`, `NextBuffer`, `PreviousBuffer`, `AlternateBuffer`,
+`SplitSource`, `VSplitSource`, `TabSource`, `Inspect`, and `Help`.
+
+The plugin emits `User` events named `MarkdownTableWrapReaderEnter`,
+`MarkdownTableWrapReaderLeave`, `MarkdownTableWrapViewChanged`, and
+`MarkdownTableWrapRendered`. On Neovim versions that support event data,
+`args.data` contains primitive Source/view buffer and window identifiers.
 
 ## Example
 
@@ -571,10 +693,14 @@ The current rendering model includes:
 - Cell navigation commands that understand inline code pipes like `` `a|b` ``.
 - Floating preview is retained for focused table-only inspection.
 - Top-level GFM pipe-table parsing with conservative Markdown block boundaries.
-- Inline code spans are treated as indivisible chunks.
+- Inline code spans stay intact when they fit and split only when an oversized
+  token would exceed its allocated display width.
 - Escaped pipes are displayed as `|`.
 - A headless Neovim regression suite exists in `tests/run.lua`.
-- Tests are split by parser, inline Markdown, width, wrapping, rendering, theme, inline extmarks, Reader lifecycle, navigation, configuration, and system render chain. See [tests/README.md](tests/README.md) for the coverage map and release-only manual checks.
+- Tests are split by parser, Markdown, width, rendering, modes, lifecycle,
+  multi-window context, actions, links, mappings, inspection, configuration,
+  and the system render chain. See [tests/README.md](tests/README.md) for the
+  coverage map and release-only manual checks.
 
 ## Testing
 
@@ -627,11 +753,17 @@ nvim --headless -u NONE --cmd "set shadafile=NONE" --cmd "set noswapfile" \
 :checkhealth markdown-table-wrap
 ```
 
+The report includes the active Source/view context, resolver and mapping
+policy, theme, module loading, and `render-markdown.nvim` coexistence hint.
+
 ## Help
 
 ```vim
 :help markdown-table-wrap
 ```
+
+Use `:MarkdownTableHelp` for a short in-editor action overlay and
+`:MarkdownTableInspect` for context suitable for issue reports.
 
 The default Reader uses real lines in a separate protected scratch buffer. Optional inline mode hides source table text with extmark conceal and overlays rendered rows on the original table rows. Neither mode edits the Markdown source.
 
@@ -644,8 +776,6 @@ Enable `inline_viewport_scrolling = true` or use `:MarkdownTableToggleInlineView
 Inline replacement is built on Neovim extmarks, conceal, overlay virtual text, and optional virtual lines. That stack is consistent logically, but terminals and platforms can expose different visual edge cases when the original Markdown source line is longer than the window.
 
 Inline mode includes cross-platform hardening through `inline_virtual_text = "overlay"` and `inline_disable_wrap = true`. A concealed source row can still soft-wrap into extra screen lines on some terminal and platform combinations when cursor-scoped wrapping restores `wrap`; this can reveal fragments of the original Markdown. Use `inline_wrap_scope = "always"` for the strictest inline stability, or use reader mode to keep native prose wrapping without relying on conceal over soft-wrapped source rows.
-
-
 ## Project Structure
 
 ```text
@@ -663,6 +793,7 @@ markdown-table-wrap.nvim/
 ├── LICENSE
 ├── PUBLISHING.md
 ├── README.md
+├── ROADMAP.md
 ├── doc/
 │   ├── markdown-table-wrap.txt
 │   └── tags
@@ -673,15 +804,22 @@ markdown-table-wrap.nvim/
 │   └── 03-floating-long-table.png
 ├── lua/
 │   └── markdown-table-wrap/
+│       ├── actions.lua
+│       ├── context.lua
+│       ├── events.lua
 │       ├── health.lua
 │       ├── init.lua
 │       ├── inline.lua
+│       ├── inspect.lua
+│       ├── links.lua
+│       ├── mappings.lua
 │       ├── markdown.lua
 │       ├── nav.lua
 │       ├── parser.lua
 │       ├── reader.lua
 │       ├── render.lua
 │       ├── theme.lua
+│       ├── types.lua
 │       ├── width.lua
 │       └── wrap.lua
 ├── plugin/
@@ -692,11 +830,17 @@ markdown-table-wrap.nvim/
     ├── helpers.lua
     ├── run.lua
     └── spec/
+        ├── actions_spec.lua
         ├── config_spec.lua
+        ├── context_spec.lua
         ├── inline_spec.lua
+        ├── inspect_spec.lua
         ├── lifecycle_spec.lua
+        ├── links_spec.lua
+        ├── mappings_spec.lua
         ├── markdown_spec.lua
         ├── mode_spec.lua
+        ├── multiwindow_spec.lua
         ├── nav_spec.lua
         ├── parser_spec.lua
         ├── reader_spec.lua

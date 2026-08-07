@@ -15,19 +15,42 @@ h.test("wrap preserves token spans", function()
   h.assert_true("wrapped code span", found_code)
 end)
 
-h.test("wrap keeps inline code spans indivisible", function()
+h.test("wrap keeps fitting code spans intact and splits oversized spans", function()
   local markdown = require("markdown-table-wrap.markdown")
   local wrap = require("markdown-table-wrap.wrap")
-  local lines = wrap.wrap_cell(markdown.parse_inline("before `code value/with/path` after"), 12)
+  local fitting = wrap.wrap_cell(markdown.parse_inline("`code value/with/path`"), 20)
+  h.assert_eq("fitting code span stays on one line", #fitting, 1)
+  h.assert_eq("fitting code span keeps its text", fitting[1].text, "code value/with/path")
 
-  local found_whole_code = false
+  local lines = wrap.wrap_cell(markdown.parse_inline("`tracepoint:sched:sched_process_exec`"), 12)
+  local pieces = {}
+
+  h.assert_true("oversized code span wraps", #lines > 1)
+  for index, line in ipairs(lines) do
+    h.assert_true("oversized code line fits " .. index, vim.api.nvim_strwidth(line.text) <= 12)
+    h.assert_true("oversized code line keeps code styling " .. index, line.spans[1] ~= nil)
+    h.assert_eq("oversized code span kind " .. index, line.spans[1].kind, "code")
+    table.insert(pieces, line.text)
+  end
+
+  h.assert_eq("oversized code span keeps its text", table.concat(pieces), "tracepoint:sched:sched_process_exec")
+end)
+
+h.test("wrap keeps ordinary inline code spans styled after a hard break", function()
+  local markdown = require("markdown-table-wrap.markdown")
+  local wrap = require("markdown-table-wrap.wrap")
+  local lines = wrap.wrap_cell(markdown.parse_inline("before `code`<br>after"), 12)
+
+  local found_code = false
   for _, line in ipairs(lines) do
-    if line.text == "code value/with/path" then
-      found_whole_code = true
+    for _, span in ipairs(line.spans) do
+      if span.kind == "code" then
+        found_code = true
+      end
     end
   end
 
-  h.assert_true("code span not split", found_whole_code)
+  h.assert_true("hard-break code span remains styled", found_code)
 end)
 
 h.test("wrap handles wide characters and hard breaks", function()

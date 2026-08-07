@@ -190,10 +190,11 @@ local function hl_for_kind(kind)
   return nil
 end
 
-local function line_object(text, chunks)
+local function line_object(text, chunks, cells)
   return {
     text = text,
     chunks = chunks or {},
+    cells = cells or {},
   }
 end
 
@@ -305,7 +306,7 @@ local function row_separator_line(chars, widths)
   return border_line(chars, chars.mid_left, chars.mid_join, chars.mid_right, widths)
 end
 
-local function add_cell_chunks(chunks, cell_line, offset)
+local function add_cell_chunks(chunks, cell_line, offset, cell_index)
   for _, span in ipairs(cell_line.spans or {}) do
     local hl = hl_for_kind(span.kind)
     if hl then
@@ -315,6 +316,7 @@ local function add_cell_chunks(chunks, cell_line, offset)
         hl_group = hl,
         kind = span.kind,
         url = span.url,
+        cell_index = cell_index,
       })
     end
   end
@@ -333,6 +335,7 @@ local function render_row(row, col_widths, align, chars, config)
   for line_index = 1, height do
     local parts = { chars.vertical }
     local chunks = {}
+    local cells = {}
     local offset = #chars.vertical
 
     for col, col_width in ipairs(col_widths) do
@@ -347,13 +350,18 @@ local function render_row(row, col_widths, align, chars, config)
       end
 
       table.insert(parts, " " .. padded .. " ")
-      add_cell_chunks(chunks, cell, offset + content_offset)
+      add_cell_chunks(chunks, cell, offset + content_offset, col)
+      table.insert(cells, {
+        index = col,
+        start_col = offset,
+        end_col = offset + #(" " .. padded .. " "),
+      })
       offset = offset + #(" " .. padded .. " ")
       table.insert(parts, chars.vertical)
       offset = offset + #chars.vertical
     end
 
-    table.insert(lines, line_object(table.concat(parts), chunks))
+    table.insert(lines, line_object(table.concat(parts), chunks, cells))
   end
 
   return lines
@@ -439,46 +447,74 @@ function M.open_float(rendered, config)
   vim.wo[win].list = false
 
   local function open_float_link()
-    local cursor = vim.api.nvim_win_get_cursor(win)
-    local line_object = rendered.line_objects and rendered.line_objects[cursor[1]]
-    local col = cursor[2]
-    local url = nil
-
-    for _, chunk in ipairs(line_object and line_object.chunks or {}) do
-      if (chunk.kind == "link" or chunk.kind == "image") and chunk.url and chunk.url ~= "" then
-        if col >= chunk.start_col and col < chunk.end_col then
-          url = chunk.url
-          break
-        end
-      end
-    end
-
-    if not url then
-      vim.notify("MarkdownTableWrap: place the cursor over a rendered link.", vim.log.levels.INFO)
+    local plugin = require("markdown-table-wrap")
+    if plugin.state.buf == buf and plugin.state.float_source_bufnr then
+      require("markdown-table-wrap.actions").run("open", { bufnr = buf, winid = win })
       return
     end
 
-    vim.ui.open(url)
+    -- `open_float()` is also a public low-level renderer and can be used
+    -- without plugin-owned Source state. Preserve that standalone behavior.
+    local cursor = vim.api.nvim_win_get_cursor(win)
+    local line_object = rendered.line_objects and rendered.line_objects[cursor[1]]
+    for _, chunk in ipairs(line_object and line_object.chunks or {}) do
+      if
+        (chunk.kind == "link" or chunk.kind == "image")
+        and chunk.url
+        and chunk.url ~= ""
+        and cursor[2] >= chunk.start_col
+        and cursor[2] < chunk.end_col
+      then
+        vim.ui.open(chunk.url)
+        return
+      end
+    end
+    vim.notify("MarkdownTableWrap: place the cursor over a rendered link.", vim.log.levels.INFO)
   end
 
-  vim.keymap.set("n", "gx", open_float_link, {
-    buffer = buf,
-    silent = true,
-    nowait = true,
-    desc = "Open rendered Markdown table link",
-  })
-
-  vim.keymap.set("n", "q", function()
-    if vim.api.nvim_win_is_valid(win) then
-      vim.api.nvim_win_close(win, true)
+  local configured_mappings = (config.mappings or {}).float
+  local mapping_config
+  if configured_mappings == false then
+    mapping_config = { enabled = false }
+  else
+    mapping_config = vim.tbl_deep_extend("force", {
+      enabled = true,
+      close = { "q", "<Esc>" },
+      open_link = "gx",
+      help = false,
+    }, type(configured_mappings) == "table" and configured_mappings or {})
+  end
+  if mapping_config.enabled ~= false then
+    local function map(lhs, callback, desc)
+      if type(lhs) ~= "string" or lhs == "" then
+        return
+      end
+      vim.keymap.set("n", lhs, callback, {
+        buffer = buf,
+        silent = true,
+        nowait = true,
+        desc = desc,
+      })
     end
-  end, { buffer = buf, silent = true, nowait = true, desc = "Close Markdown table preview" })
 
-  vim.keymap.set("n", "<Esc>", function()
-    if vim.api.nvim_win_is_valid(win) then
-      vim.api.nvim_win_close(win, true)
+    map(mapping_config.open_link, open_float_link, "Open rendered Markdown table link")
+
+    local close_keys = mapping_config.close
+    if type(close_keys) == "string" then
+      close_keys = { close_keys }
     end
-  end, { buffer = buf, silent = true, nowait = true, desc = "Close Markdown table preview" })
+    for _, lhs in ipairs(close_keys or {}) do
+      map(lhs, function()
+        if vim.api.nvim_win_is_valid(win) then
+          vim.api.nvim_win_close(win, true)
+        end
+      end, "Close Markdown table preview")
+    end
+
+    map(mapping_config.help, function()
+      require("markdown-table-wrap.actions").run("help", { bufnr = buf, winid = win })
+    end, "Show Markdown table preview help")
+  end
 
   return buf, win
 end

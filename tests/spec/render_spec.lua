@@ -83,6 +83,52 @@ h.test("render keeps borders aligned for code-wrapped link labels", function()
   end)
 end)
 
+h.test("render wraps oversized inline code in a narrow window", function()
+  local parser = require("markdown-table-wrap.parser")
+  local render = require("markdown-table-wrap.render")
+  local original_columns = vim.o.columns
+
+  vim.o.columns = 60
+  local ok, err = pcall(function()
+    h.with_buffer({
+      "| 语义 | 当前实验候选 | 能支持的最小结论 | 不能直接支持 |",
+      "|---|---|---|---|",
+      "| request/attempt | `tracepoint:syscalls:sys_enter_execve` | 进程提交了执行请求 | 请求成功、最终 file object |",
+      "| syscall return | `tracepoint:syscalls:sys_exit_execve` | syscall 返回值和 entry 的时间/PID 关系 | 所有内核内部路径、策略决定 |",
+      "| success/lifecycle | `tracepoint:sched:sched_process_exec` | 成功映像切换的生命周期证据候选 | 失败请求集合 |",
+      "| decision | BPF LSM exec-related hook（另行 discovery） | 某安全决策点的 allow/deny 语义候选 | 完整审计 coverage |",
+    }, function(buf)
+      local parsed = parser.parse_at_cursor(buf, 3)
+      local rendered = render.render_table(parsed, {
+        max_width_ratio = 0.9,
+        min_col_width = 8,
+        max_col_width = 50,
+        fit_to_window = true,
+        use_unicode_border = true,
+        table_border = "rounded",
+        row_separator = false,
+      })
+
+      local code_line_count = 0
+      for index, line in ipairs(rendered.lines) do
+        h.assert_true("narrow rendered line fits " .. index, vim.api.nvim_strwidth(line) <= rendered.width)
+        for _, chunk in ipairs(rendered.line_objects[index].chunks or {}) do
+          if chunk.hl_group == "MarkdownTableWrapCode" then
+            code_line_count = code_line_count + 1
+            break
+          end
+        end
+      end
+
+      h.assert_true("oversized code is rendered across multiple lines", code_line_count > 1)
+    end)
+  end)
+  vim.o.columns = original_columns
+  if not ok then
+    error(err, 0)
+  end
+end)
+
 h.test("render output golden snapshot", function()
   local parser = require("markdown-table-wrap.parser")
   local render = require("markdown-table-wrap.render")

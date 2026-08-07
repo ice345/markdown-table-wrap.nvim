@@ -35,6 +35,11 @@ Unlike inline extmark replacement, reader mode is not layered over long raw
 table rows. Native wrap therefore cannot reveal source pipes or URLs beneath
 the rendered table.
 
+Cell wrapping uses Neovim display width. Inline-code spans remain intact when
+they fit their allocated column; if a code token is wider than that column, it
+is split at character boundaries so narrow Reader and Inline tables keep their
+vertical borders aligned.
+
 Default interaction:
 
 - Normal mode stays in Reader.
@@ -45,8 +50,10 @@ Default interaction:
   Reader buffer is never written to disk; :wq then quits as usual.
 - |:MarkdownTableToggleReader| switches between Reader and Source.
 - |:MarkdownTableEditSource| leaves Reader and pauses automatic reopening.
-- gx in Reader opens the original URL under a rendered link. Source-buffer gx
-  is left untouched by default; see |markdown-table-wrap-map-gx|.
+- gx in Reader opens the original target under a rendered link. Away from a
+  target it delegates to the Source mapping captured when Reader opened, or to
+  native gx when available. Source-buffer gx is left untouched by default;
+  see |markdown-table-wrap-map-gx|.
 
 VIEW CHOICE                                  *markdown-table-wrap-view-choice*
 
@@ -130,6 +137,10 @@ ToggleReader is bidirectional. EditSource is one-way and pauses automatic
 reopening until Reader is explicitly opened again. ToggleInline selects Inline
 for the current buffer's editing session without changing global setup.
 
+Session files should restore Source rather than the disposable Reader or Float
+scratch buffer. After setup, auto_preview and reader.auto_open may recreate a
+view. The plugin does not serialize scratch view buffers into the session.
+
 ==============================================================================
 COMMANDS                                      *markdown-table-wrap-commands*
 
@@ -173,7 +184,7 @@ COMMANDS                                      *markdown-table-wrap-commands*
 
                                                         *:MarkdownTableRefresh*
 :MarkdownTableRefresh
-    Force refresh Markdown table rendering in the current buffer.
+    Force refresh the active Source, Inline, Reader, or Float view.
 
                                              *:MarkdownTableEnableAutoPreview*
 :MarkdownTableEnableAutoPreview
@@ -215,7 +226,34 @@ COMMANDS                                      *markdown-table-wrap-commands*
 
                                                       *:MarkdownTableOpenLink*
 :MarkdownTableOpenLink
-    Open the first link in the current source table cell.
+    Compatibility alias for |:MarkdownTableOpen|.
+
+                                                          *:MarkdownTableOpen*
+:MarkdownTableOpen
+    Open the Markdown target under the cursor. Relative files are resolved
+    from the canonical Source path in Source, Inline, Reader, and Float.
+
+                                                     *:MarkdownTableOpenSplit*
+:MarkdownTableOpenSplit
+    Open a file target in a horizontal split.
+
+                                                    *:MarkdownTableOpenVSplit*
+:MarkdownTableOpenVSplit
+    Open a file target in a vertical split.
+
+                                                       *:MarkdownTableOpenTab*
+:MarkdownTableOpenTab
+    Open a file target in a new tab.
+
+                                                       *:MarkdownTableInspect*
+:MarkdownTableInspect
+    Report mode, Source/view identity, mapped cursor, current table/cell,
+    width budget, cache state, and effective options.
+
+                                                          *:MarkdownTableHelp*
+:MarkdownTableHelp
+    Open a compact action and configured-key reference. This command remains
+    available when Reader-local mappings are disabled.
 
                                                      *:MarkdownTableScrollDown*
 :MarkdownTableScrollDown
@@ -285,6 +323,7 @@ Default setup:
         scope_highlight = "MarkdownTableWrapWikiLink",
       },
       image = " ",
+      resolver = nil,
       custom = {
         github = { pattern = "github", icon = " " },
         gitlab = { pattern = "gitlab", icon = "󰮠 " },
@@ -294,6 +333,23 @@ Default setup:
       },
     },
     map_gx = false,
+    mappings = {
+      reader = {
+        enabled = true,
+        close = "q",
+        edit = "e",
+        open_link = "gx",
+        help = false,
+        insert = { "i", "a", "I", "A", "o", "O" },
+        passthrough = {},
+      },
+      float = {
+        enabled = true,
+        close = { "q", "<Esc>" },
+        open_link = "gx",
+        help = false,
+      },
+    },
   })
 <
 
@@ -391,13 +447,37 @@ inline_viewport_scrolling~
 
 link~
     Icon configuration for links, wiki links, images, and URL pattern matches.
+    link.resolver may be a function(target, context, strategy). Return true or
+    "noop" when handled, false to cancel, or "edit", "split", "vsplit", or
+    "tab" to select built-in file opening.
     Standard Markdown links use [text](url). The plugin also accepts
     (text)[url] as a convenience form inside table cells.
+
+mappings~                              *markdown-table-wrap-mappings*
+    Configure or disable Reader and Float buffer-local mappings. Set
+    mappings.reader = false or mappings.reader.enabled = false to install no
+    Reader-local mappings. Commands and documented <Plug> mappings remain.
+
+    mappings.reader.passthrough explicitly captures a Source mapping. A value
+    may name a plugin action such as "next_buffer", or use a table containing
+    policy = "leave", "source", or "view". No passthrough is installed by
+    default.
+>
+      mappings = {
+        reader = {
+          passthrough = {
+            H = "previous_buffer",
+            L = "next_buffer",
+            gf = "open",
+          },
+        },
+      }
+<
 
 map_gx~                                    *markdown-table-wrap-map-gx*
     Opt into a buffer-local gx mapping for table links in Source buffers.
     Defaults to false, leaving the user's existing mapping untouched. Reader
-    links remain directly openable. |:MarkdownTableOpenLink| can also be
+    links remain directly openable. |:MarkdownTableOpen| can also be
     mapped manually.
 
 extra_filetypes~
@@ -439,11 +519,51 @@ get_preview_mode({bufnr})~          *markdown-table-wrap.get_preview_mode()*
     without mutating global setup. Omit {bufnr} or pass 0 for the current
     buffer.
 
+get_state({bufnr})~                        *markdown-table-wrap.get_state()*
+    Return a copied active context with mode, canonical Source, view/window,
+    mapped cursor, table/cell, cache, and effective configuration. Return nil
+    plus an error when the requested view is invalid.
+
+resolve_source_buffer({bufnr})~
+                         *markdown-table-wrap.resolve_source_buffer()*
+    Return the canonical Source buffer behind Source, Inline, Reader, or
+    Float.
+
+action({name}, {opts})~                       *markdown-table-wrap.action()*
+    Run a stable mode-agnostic action. Common names are toggle_reader,
+    toggle_inline, edit_source, close, refresh, open, open_split,
+    open_vsplit, open_tab, next_buffer, previous_buffer, alternate_buffer,
+    split_source, vsplit_source, tab_source, inspect, and help.
+
+statusline({bufnr})~                       *markdown-table-wrap.statusline()*
+    Return a compact component such as "MTW Reader T3:C2", or an empty string
+    for an invalid context.
+
+Stable normal-mode <Plug> mappings use the following names:
+
+- <Plug>(MarkdownTableWrapToggleReader)
+- <Plug>(MarkdownTableWrapToggleInline)
+- <Plug>(MarkdownTableWrapEditSource)
+- <Plug>(MarkdownTableWrapClose)
+- <Plug>(MarkdownTableWrapRefresh)
+- <Plug>(MarkdownTableWrapOpen), OpenSplit, OpenVSplit, and OpenTab
+- <Plug>(MarkdownTableWrapNextBuffer), PreviousBuffer, and AlternateBuffer
+- <Plug>(MarkdownTableWrapSplitSource), VSplitSource, and TabSource
+- <Plug>(MarkdownTableWrapInspect) and Help
+
+The plugin emits User events MarkdownTableWrapReaderEnter,
+MarkdownTableWrapReaderLeave, MarkdownTableWrapViewChanged, and
+MarkdownTableWrapRendered. On supported Neovim versions, autocmd callbacks can
+read primitive Source/view identifiers from args.data.
+
 Example:
 >
   local table_wrap = require("markdown-table-wrap")
   local config = table_wrap.get_buffer_config(0)
   local mode = table_wrap.get_preview_mode(0)
+  local context = table_wrap.get_state(0)
+  local source = table_wrap.resolve_source_buffer(0)
+  local component = table_wrap.statusline(0)
 <
 
 ==============================================================================

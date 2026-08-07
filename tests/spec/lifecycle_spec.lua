@@ -343,6 +343,64 @@ h.test("repeated setup closes an open floating preview", function()
   end)
 end)
 
+h.test("native Reader buffer exits preserve unsaved Source state", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  local original_hidden = vim.o.hidden
+
+  plugin.setup({ auto_preview = false, preview_mode = "reader" })
+  vim.o.hidden = false
+
+  local function exercise(label, leave)
+    local target_bufnr = vim.api.nvim_create_buf(true, false)
+    local source_bufnr = vim.api.nvim_create_buf(true, false)
+    vim.bo[target_bufnr].swapfile = false
+    vim.bo[source_bufnr].swapfile = false
+    vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, { label .. " target" })
+    vim.api.nvim_buf_set_lines(source_bufnr, 0, -1, false, table_lines)
+    vim.bo[target_bufnr].modified = false
+    vim.bo[source_bufnr].modified = false
+    vim.bo[source_bufnr].filetype = "markdown"
+    local source_bufhidden = vim.bo[source_bufnr].bufhidden
+
+    vim.api.nvim_set_current_buf(target_bufnr)
+    vim.api.nvim_set_current_buf(source_bufnr)
+    vim.bo[source_bufnr].modified = true
+    local reader_bufnr = plugin.reader_preview()
+    h.assert_eq(label .. " Reader stays unlisted", vim.fn.buflisted(reader_bufnr), 0)
+
+    local ok, err = pcall(leave, reader_bufnr)
+    h.assert_true(label .. " command succeeds: " .. tostring(err), ok)
+    vim.wait(100, function()
+      return not vim.api.nvim_buf_is_valid(reader_bufnr)
+    end, 5)
+
+    h.assert_false(label .. " clears Reader state", reader.is_reader(reader_bufnr))
+    h.assert_true(label .. " deletes disposable Reader", not vim.api.nvim_buf_is_valid(reader_bufnr))
+    h.assert_true(label .. " preserves unsaved Source", vim.bo[source_bufnr].modified)
+    h.assert_eq(label .. " restores Source bufhidden", vim.bo[source_bufnr].bufhidden, source_bufhidden)
+
+    delete_buffer(source_bufnr)
+    delete_buffer(target_bufnr)
+  end
+
+  exercise(":bnext", function()
+    vim.cmd("bnext")
+  end)
+  exercise(":bprevious", function()
+    vim.cmd("bprevious")
+  end)
+  exercise("CTRL-^", function()
+    local key = vim.api.nvim_replace_termcodes("<C-^>", true, false, true)
+    vim.api.nvim_feedkeys(key, "nx", false)
+  end)
+  exercise("Reader wipe", function(reader_bufnr)
+    vim.api.nvim_buf_delete(reader_bufnr, { force = true })
+  end)
+
+  vim.o.hidden = original_hidden
+end)
+
 h.test("gx delegates ordinary text to the previous buffer-local mapping", function()
   local plugin = require("markdown-table-wrap")
   local fallback_calls = 0
@@ -418,4 +476,20 @@ h.test("gx teardown preserves a later user mapping even with the same descriptio
     vim.cmd("normal gx")
     h.assert_eq("later user mapping is not mistaken for the proxy", later_calls, 1)
   end)
+end)
+
+h.test("wiping a Source cleans every dependent Reader", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  plugin.setup({ auto_preview = false })
+
+  local source_bufnr = new_markdown_buffer(table_lines)
+  vim.api.nvim_set_current_buf(source_bufnr)
+  local reader_bufnr = plugin.reader_preview()
+  vim.api.nvim_buf_delete(source_bufnr, { force = true })
+  vim.wait(100, function()
+    return not vim.api.nvim_buf_is_valid(reader_bufnr)
+  end, 5)
+  h.assert_false("deleted Source removes Reader state", reader.is_reader(reader_bufnr))
+  h.assert_false("deleted Source removes Reader buffer", vim.api.nvim_buf_is_valid(reader_bufnr))
 end)

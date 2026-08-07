@@ -2,6 +2,59 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
+## Unreleased
+
+## 0.3.0 - Transparent Modes And Neovim Integration
+
+### Added
+
+- Add a mode-agnostic context API with `get_state(bufnr?)`,
+  `resolve_source_buffer(bufnr?)`, `action(name, opts?)`, and a compact
+  `statusline(bufnr?)` component.
+- Add Source-aware target handling for external URLs, relative and absolute
+  files, `file:line`, anchors, file anchors, wiki links, images, and multiple
+  targets. File targets open inside Neovim; external targets use `vim.ui.open`.
+- Add configurable Reader and Float mappings, explicit Reader passthrough
+  policies, and stable `<Plug>(MarkdownTableWrap...)` actions without adding
+  invasive default Source mappings.
+- Add `:MarkdownTableOpen`, split/vsplit/tab variants,
+  `:MarkdownTableInspect`, and `:MarkdownTableHelp`; keep
+  `:MarkdownTableOpenLink` as a compatibility alias.
+- Add `MarkdownTableWrapReaderEnter`, `MarkdownTableWrapReaderLeave`,
+  `MarkdownTableWrapViewChanged`, and `MarkdownTableWrapRendered` `User`
+  events with safe Source/view identifiers.
+- Add LuaLS types for configuration, contexts, targets, actions, mappings, and
+  resolver callbacks.
+
+### Changed
+
+- Treat Reader, Inline, Float, and Source as views of one canonical Source for
+  actions and navigation. Relative links now resolve from the Source file in
+  every plugin-owned view.
+- Keep multiple Reader windows for one Source isolated by window width and
+  cursor while sharing Source lifetime safely; Source edits refresh dependent
+  Readers without replacing a visible Source window.
+- Expand `:checkhealth markdown-table-wrap` with active context, resolver,
+  mapping, theme, module, and renderer-coexistence diagnostics.
+
+### Fixed
+
+- Preserve Reader `gx` behavior outside rendered targets by invoking the
+  captured Source mapping or native fallback exactly once, including callback,
+  string, expression, remap, and `replace_keycodes` cases.
+- Make implicit Reader exits through `:bnext`, `:bprevious`, `<C-^>`, window
+  changes, and buffer deletion restore Source ownership and window options
+  without losing unsaved changes or exposing the scratch Reader in buffer
+  lists.
+- Preserve alternate-buffer navigation and add explicit next/previous/select,
+  split, vertical-split, and tab actions that leave disposable views safely.
+- Wrap inline-code spans at display-width-safe character boundaries when the
+  code token itself is wider than its allocated cell. Code that fits remains a
+  single styled span, while narrow Reader and Inline tables keep every border
+  aligned.
+- Re-check the remaining cell tail after a preferred soft-wrap boundary so
+  wide CJK punctuation cannot leave one rendered row wider than its table.
+
 ## 0.2.3 - Inline Rendering Corrections
 
 ### Fixed

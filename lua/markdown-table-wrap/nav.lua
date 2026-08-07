@@ -220,51 +220,8 @@ function M.current_cell_text()
 end
 
 function M.open_link()
-  local markdown = require("markdown-table-wrap.markdown")
-  local cell = M.current_cell_text()
-  local links = cell and markdown.extract_links(cell) or {}
-
-  if #links == 0 then
-    local parser = require("markdown-table-wrap.parser")
-    local table_info = parser.parse_at_cursor(vim.api.nvim_get_current_buf(), vim.api.nvim_win_get_cursor(0)[1])
-    if table_info then
-      local candidates = {}
-      local rows = { table_info.header }
-      vim.list_extend(rows, table_info.rows)
-
-      for _, row in ipairs(rows) do
-        for _, parsed_cell in ipairs(row) do
-          vim.list_extend(candidates, markdown.extract_links(parsed_cell))
-        end
-      end
-
-      local word = vim.fn.expand("<cword>"):lower()
-      for _, candidate in ipairs(candidates) do
-        if word ~= "" and candidate.text:lower() == word then
-          links = { candidate }
-          break
-        end
-      end
-
-      if #links == 0 and #candidates == 1 then
-        links = candidates
-      end
-    end
-  end
-
-  if #links == 0 then
-    vim.notify("MarkdownTableWrap: no link found in the current table cell.", vim.log.levels.INFO)
-    return false
-  end
-
-  local url = links[1].url
-  if url == "" then
-    vim.notify("MarkdownTableWrap: link has no URL.", vim.log.levels.INFO)
-    return false
-  end
-
-  vim.ui.open(url)
-  return true
+  local context = require("markdown-table-wrap.context").resolve()
+  return context and require("markdown-table-wrap.links").open_at_context(context) or false
 end
 
 return M

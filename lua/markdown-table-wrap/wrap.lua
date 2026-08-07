@@ -13,6 +13,15 @@ local break_chars = {
   ["/"] = true,
 }
 
+local code_break_chars = {
+  [":"] = true,
+  ["."] = true,
+  ["/"] = true,
+  ["_"] = true,
+  ["-"] = true,
+  ["="] = true,
+}
+
 local function iter_chars_with_pos(text)
   local index = 1
   return function()
@@ -122,25 +131,47 @@ local function append_line(lines, chars)
   table.insert(lines, line_from_chars(chars))
 end
 
+local function expand_oversized_item(item, limit)
+  if item.kind ~= "code" or width.strwidth(item.text) <= limit then
+    return { item }
+  end
+
+  local pieces = {}
+  for ch in iter_chars_with_pos(item.text) do
+    table.insert(pieces, {
+      text = ch,
+      kind = item.kind,
+      url = item.url,
+    })
+  end
+
+  return pieces
+end
+
 local function wrap_segment(chars, limit, lines)
   local current = {}
   local last_break = nil
 
-  for _, item in ipairs(chars) do
-    if #current > 0 and width.strwidth(line_from_chars(current).text .. item.text) > limit then
-      if last_break and last_break < #current then
-        append_line(lines, slice_chars(current, 1, last_break))
-        current = slice_chars(current, last_break + 1, #current)
-      else
-        append_line(lines, current)
-        current = {}
+  for _, source_item in ipairs(chars) do
+    for _, item in ipairs(expand_oversized_item(source_item, limit)) do
+      while #current > 0 and width.strwidth(line_from_chars(current).text .. item.text) > limit do
+        if last_break and last_break < #current then
+          local break_line = line_from_chars(slice_chars(current, 1, last_break))
+          if break_line.text ~= "" then
+            table.insert(lines, break_line)
+          end
+          current = slice_chars(current, last_break + 1, #current)
+        else
+          append_line(lines, current)
+          current = {}
+        end
+        last_break = nil
       end
-      last_break = nil
-    end
 
-    table.insert(current, item)
-    if break_chars[item.text] then
-      last_break = #current
+      table.insert(current, item)
+      if break_chars[item.text] or (item.kind == "code" and code_break_chars[item.text]) then
+        last_break = #current
+      end
     end
   end
 

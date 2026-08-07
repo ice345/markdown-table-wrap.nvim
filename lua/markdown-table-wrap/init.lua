@@ -1,6 +1,6 @@
 local M = {}
 
-M.version = "0.2.3"
+M.version = "0.3.0"
 
 local defaults = {
   max_width_ratio = 0.9,
@@ -42,6 +42,23 @@ local defaults = {
   extra_filetypes = {},
   highlights = {},
   map_gx = false,
+  mappings = {
+    reader = {
+      enabled = true,
+      close = "q",
+      edit = "e",
+      open_link = "gx",
+      help = false,
+      insert = { "i", "a", "I", "A", "o", "O" },
+      passthrough = {},
+    },
+    float = {
+      enabled = true,
+      close = { "q", "<Esc>" },
+      open_link = "gx",
+      help = false,
+    },
+  },
   link = {
     icon = "",
     wiki = { icon = " ", highlight = "MarkdownTableWrapWikiLink", scope_highlight = "MarkdownTableWrapWikiLink" },
@@ -74,6 +91,10 @@ M.state = {
   last_signature = {},
   did_setup = false,
   visual_buffers = {},
+  float_source_bufnr = nil,
+  float_source_winid = nil,
+  float_source_alt_bufnr = nil,
+  float_rendered = nil,
 }
 
 local function configured_filetypes()
@@ -144,6 +165,43 @@ function M.get_preview_mode(bufnr)
   return preview_mode_for(bufnr)
 end
 
+function M.get_state(bufnr)
+  local context, err = require("markdown-table-wrap.context").resolve({ bufnr = bufnr })
+  if not context then
+    return nil, err
+  end
+  return context
+end
+
+function M.resolve_source_buffer(bufnr)
+  local context = require("markdown-table-wrap.context").resolve({ bufnr = bufnr })
+  return context and context.source_bufnr or nil
+end
+
+---@param name string
+---@param opts? table
+---@return boolean
+function M.action(name, opts)
+  return require("markdown-table-wrap.actions").run(name, opts)
+end
+
+---@param bufnr? integer
+---@return string
+function M.statusline(bufnr)
+  local ok, context = pcall(require("markdown-table-wrap.context").resolve, { bufnr = bufnr })
+  if not ok or not context then
+    return ""
+  end
+
+  local mode = context.mode:sub(1, 1):upper() .. context.mode:sub(2)
+  if not context.table then
+    return "MTW " .. mode
+  end
+  local table_row = context.cursor.source_lnum - context.table.start_lnum + 1
+  local cell = context.cell and context.cell.index or 0
+  return string.format("MTW %s T%d:C%d", mode, math.max(1, table_row), cell)
+end
+
 local function validate_config()
   M.config.max_width_ratio = tonumber(M.config.max_width_ratio) or defaults.max_width_ratio
   M.config.min_col_width = math.max(1, tonumber(M.config.min_col_width) or defaults.min_col_width)
@@ -158,6 +216,36 @@ local function validate_config()
   M.config.inline_disable_wrap = M.config.inline_disable_wrap ~= false
   M.config.inline_viewport_scrolling = M.config.inline_viewport_scrolling ~= false
   M.config.map_gx = M.config.map_gx == true
+
+  if type(M.config.mappings) ~= "table" then
+    M.config.mappings = vim.deepcopy(defaults.mappings)
+  end
+  for _, view in ipairs({ "reader", "float" }) do
+    local value = M.config.mappings[view]
+    if value == false then
+      M.config.mappings[view] = { enabled = false }
+    elseif type(value) ~= "table" then
+      M.config.mappings[view] = vim.deepcopy(defaults.mappings[view])
+    else
+      M.config.mappings[view] = vim.tbl_deep_extend("force", vim.deepcopy(defaults.mappings[view]), value)
+      M.config.mappings[view].enabled = M.config.mappings[view].enabled ~= false
+    end
+  end
+  if M.config.mappings.reader.insert == false then
+    M.config.mappings.reader.insert = {}
+  elseif type(M.config.mappings.reader.insert) ~= "table" then
+    M.config.mappings.reader.insert = vim.deepcopy(defaults.mappings.reader.insert)
+  end
+  if type(M.config.mappings.reader.passthrough) ~= "table" then
+    M.config.mappings.reader.passthrough = {}
+  end
+  if
+    M.config.mappings.float.close ~= false
+    and type(M.config.mappings.float.close) ~= "table"
+    and type(M.config.mappings.float.close) ~= "string"
+  then
+    M.config.mappings.float.close = vim.deepcopy(defaults.mappings.float.close)
+  end
 
   if not vim.tbl_contains({ "always", "cursor", "never" }, M.config.inline_wrap_scope) then
     M.config.inline_wrap_scope = defaults.inline_wrap_scope
@@ -214,6 +302,9 @@ local function validate_config()
   if type(M.config.link.custom) ~= "table" then
     M.config.link.custom = vim.deepcopy(defaults.link.custom)
   end
+  if M.config.link.resolver ~= nil and type(M.config.link.resolver) ~= "function" then
+    M.config.link.resolver = nil
+  end
 
   if M.config.inline_virtual_text ~= "overlay" and M.config.inline_virtual_text ~= "win_col" then
     M.config.inline_virtual_text = defaults.inline_virtual_text
@@ -255,10 +346,7 @@ local function validate_config()
 end
 
 local function current_gx_mapping(bufnr)
-  return vim.api.nvim_buf_call(bufnr, function()
-    local mapping = vim.fn.maparg("gx", "n", false, true)
-    return type(mapping) == "table" and next(mapping) ~= nil and mapping or nil
-  end)
+  return require("markdown-table-wrap.mappings").get(bufnr, "gx", "n")
 end
 
 local function owns_gx_mapping(bufnr, mapping)
@@ -274,12 +362,7 @@ local function restore_gx_mapping(bufnr)
   local fallback = M.state.gx_fallbacks[bufnr]
   local current = vim.api.nvim_buf_is_valid(bufnr) and current_gx_mapping(bufnr) or nil
   if owns_gx_mapping(bufnr, current) then
-    pcall(vim.keymap.del, "n", "gx", { buffer = bufnr })
-    if fallback and fallback.buffer == 1 and vim.api.nvim_buf_is_valid(bufnr) then
-      pcall(vim.api.nvim_buf_call, bufnr, function()
-        vim.fn.mapset("n", 0, fallback)
-      end)
-    end
+    require("markdown-table-wrap.mappings").restore(bufnr, "gx", "n", fallback)
   end
   M.state.gx_fallbacks[bufnr] = nil
   M.state.gx_installed[bufnr] = nil
@@ -287,40 +370,7 @@ local function restore_gx_mapping(bufnr)
 end
 
 local function invoke_gx_mapping(mapping)
-  if mapping and type(mapping.callback) == "function" then
-    local ok, result = pcall(mapping.callback)
-    if ok and mapping.expr == 1 and type(result) == "string" and result ~= "" then
-      if mapping.replace_keycodes ~= 0 then
-        result = vim.api.nvim_replace_termcodes(result, true, false, true)
-      end
-      vim.api.nvim_feedkeys(result, mapping.noremap == 1 and "n" or "m", false)
-    end
-    return ok
-  end
-
-  if mapping and mapping.expr == 1 and type(mapping.rhs) == "string" and mapping.rhs ~= "" then
-    local ok, result = pcall(vim.api.nvim_eval, mapping.rhs)
-    if ok and type(result) == "string" and result ~= "" then
-      if mapping.replace_keycodes ~= 0 then
-        result = vim.api.nvim_replace_termcodes(result, true, false, true)
-      end
-      vim.api.nvim_feedkeys(result, mapping.noremap == 1 and "n" or "m", false)
-    end
-    return ok
-  end
-
-  if mapping and type(mapping.rhs) == "string" and mapping.rhs ~= "" then
-    local keys = vim.api.nvim_replace_termcodes(mapping.rhs, true, false, true)
-    vim.api.nvim_feedkeys(keys, mapping.noremap == 1 and "n" or "m", false)
-    return true
-  end
-
-  local target = vim.fn.expand("<cfile>")
-  if target ~= "" and vim.ui and type(vim.ui.open) == "function" then
-    vim.ui.open(target)
-    return true
-  end
-  return false
+  return require("markdown-table-wrap.mappings").invoke(mapping, { native_gx = true })
 end
 
 local function attach_link_keymap(bufnr)
@@ -358,6 +408,9 @@ local function attach_link_keymap(bufnr)
 end
 
 local function close_existing()
+  local source_bufnr = M.state.float_source_bufnr
+  local source_winid = M.state.float_source_winid
+  local had_float = source_bufnr ~= nil
   if M.state.win and vim.api.nvim_win_is_valid(M.state.win) then
     vim.api.nvim_win_close(M.state.win, true)
   end
@@ -368,6 +421,18 @@ local function close_existing()
 
   M.state.win = nil
   M.state.buf = nil
+  M.state.float_source_bufnr = nil
+  M.state.float_source_winid = nil
+  M.state.float_source_alt_bufnr = nil
+  M.state.float_rendered = nil
+  if had_float and source_bufnr and vim.api.nvim_buf_is_valid(source_bufnr) then
+    require("markdown-table-wrap.events").emit("MarkdownTableWrapViewChanged", {
+      mode = "source",
+      source_bufnr = source_bufnr,
+      view_bufnr = source_bufnr,
+      winid = source_winid,
+    })
+  end
 end
 
 local function table_signature(bufnr, table_info, config)
@@ -474,6 +539,10 @@ function M.inline_preview()
   require("markdown-table-wrap.inline").show(bufnr, table_info, config)
   M.state.last_signature[bufnr] = table_signature(bufnr, table_info, config)
   M.state.inline_buf = bufnr
+  local event_data =
+    { mode = "inline", source_bufnr = bufnr, view_bufnr = bufnr, winid = vim.api.nvim_get_current_win() }
+  require("markdown-table-wrap.events").emit("MarkdownTableWrapViewChanged", event_data)
+  require("markdown-table-wrap.events").emit("MarkdownTableWrapRendered", event_data)
 end
 
 function M.reader_preview(opts)
@@ -548,12 +617,21 @@ function M.float_preview()
 
   close_existing()
 
+  local source_winid = vim.api.nvim_get_current_win()
+  local source_alt_bufnr = vim.fn.bufnr("#")
   local config = config_for_buffer(bufnr)
   local render = require("markdown-table-wrap.render")
   local rendered = render.render_table(table_info, config)
   local buf, win = render.open_float(rendered, config)
   M.state.buf = buf
   M.state.win = win
+  M.state.float_source_bufnr = bufnr
+  M.state.float_source_winid = source_winid
+  M.state.float_source_alt_bufnr = source_alt_bufnr > 0 and source_alt_bufnr or nil
+  M.state.float_rendered = rendered
+  local event_data = { mode = "float", source_bufnr = bufnr, view_bufnr = buf, winid = win }
+  require("markdown-table-wrap.events").emit("MarkdownTableWrapViewChanged", event_data)
+  require("markdown-table-wrap.events").emit("MarkdownTableWrapRendered", event_data)
 end
 
 function M.preview()
@@ -607,6 +685,11 @@ function M.refresh_auto(opts)
 
   local parser = require("markdown-table-wrap.parser")
   if config.preview_mode == "reader" then
+    local reader = require("markdown-table-wrap.reader")
+    if reader.has_source_readers(bufnr) then
+      reader.refresh_source(bufnr)
+      return
+    end
     if config.reader.auto_open == "has_table" and #parser.parse_all(bufnr) == 0 then
       inline.clear(bufnr)
       M.state.last_signature[bufnr] = nil
@@ -638,6 +721,14 @@ function M.refresh_auto(opts)
     inline.show_many(bufnr, tables, config)
     M.state.last_signature[bufnr] = signature
     M.state.inline_buf = bufnr
+    local event_data = {
+      mode = "inline",
+      source_bufnr = bufnr,
+      view_bufnr = bufnr,
+      winid = vim.api.nvim_get_current_win(),
+    }
+    require("markdown-table-wrap.events").emit("MarkdownTableWrapViewChanged", event_data)
+    require("markdown-table-wrap.events").emit("MarkdownTableWrapRendered", event_data)
     return
   end
 
@@ -665,6 +756,12 @@ function M.refresh_auto(opts)
   inline.show(bufnr, table_info, config)
   M.state.last_signature[bufnr] = signature
   M.state.inline_buf = bufnr
+  require("markdown-table-wrap.events").emit("MarkdownTableWrapRendered", {
+    mode = "inline",
+    source_bufnr = bufnr,
+    view_bufnr = bufnr,
+    winid = vim.api.nvim_get_current_win(),
+  })
 end
 
 function M.schedule_refresh(opts)
@@ -879,6 +976,11 @@ local function create_autocmds()
         if not is_markdown_buffer(bufnr) then
           return
         end
+        if args.event == "TextChanged" or args.event == "TextChangedI" or args.event == "InsertLeave" then
+          if require("markdown-table-wrap.reader").refresh_source(bufnr) > 0 then
+            return
+          end
+        end
         local winid = vim.api.nvim_get_current_win()
         if vim.api.nvim_win_get_buf(winid) ~= bufnr then
           winid = nil
@@ -1000,6 +1102,35 @@ local function create_autocmds()
   })
 end
 
+local function register_plug_mappings()
+  local plugs = {
+    ["<Plug>(MarkdownTableWrapToggleReader)"] = "toggle_reader",
+    ["<Plug>(MarkdownTableWrapToggleInline)"] = "toggle_inline",
+    ["<Plug>(MarkdownTableWrapEditSource)"] = "edit_source",
+    ["<Plug>(MarkdownTableWrapClose)"] = "close",
+    ["<Plug>(MarkdownTableWrapRefresh)"] = "refresh",
+    ["<Plug>(MarkdownTableWrapOpen)"] = "open",
+    ["<Plug>(MarkdownTableWrapOpenSplit)"] = "open_split",
+    ["<Plug>(MarkdownTableWrapOpenVSplit)"] = "open_vsplit",
+    ["<Plug>(MarkdownTableWrapOpenTab)"] = "open_tab",
+    ["<Plug>(MarkdownTableWrapNextBuffer)"] = "next_buffer",
+    ["<Plug>(MarkdownTableWrapPreviousBuffer)"] = "previous_buffer",
+    ["<Plug>(MarkdownTableWrapAlternateBuffer)"] = "alternate_buffer",
+    ["<Plug>(MarkdownTableWrapSplitSource)"] = "split_source",
+    ["<Plug>(MarkdownTableWrapVSplitSource)"] = "vsplit_source",
+    ["<Plug>(MarkdownTableWrapTabSource)"] = "tab_source",
+    ["<Plug>(MarkdownTableWrapInspect)"] = "inspect",
+    ["<Plug>(MarkdownTableWrapHelp)"] = "help",
+  }
+
+  for lhs, action in pairs(plugs) do
+    local action_name = action
+    vim.keymap.set("n", lhs, function()
+      require("markdown-table-wrap.actions").run(action_name)
+    end, { silent = true, desc = "Markdown table: " .. action_name })
+  end
+end
+
 function M.setup(opts)
   if M.state.did_setup then
     close_existing()
@@ -1023,6 +1154,7 @@ function M.setup(opts)
   M.state.visual_buffers = {}
   M.state.inline_buf = nil
   create_autocmds()
+  register_plug_mappings()
   require("markdown-table-wrap.theme").apply(M.config)
   M.state.did_setup = true
 
@@ -1074,7 +1206,7 @@ function M.setup(opts)
   end, { desc = "Close wrapped Markdown table preview", force = true })
 
   vim.api.nvim_create_user_command("MarkdownTableRefresh", function()
-    M.refresh_auto({ force = true })
+    M.action("refresh")
   end, { desc = "Force refresh Markdown table rendering", force = true })
 
   vim.api.nvim_create_user_command("MarkdownTableEnableAutoPreview", function()
@@ -1131,9 +1263,31 @@ function M.setup(opts)
     require("markdown-table-wrap.nav").move_vertical(-1)
   end, { desc = "Move to the same Markdown table cell in the previous row", force = true })
 
-  vim.api.nvim_create_user_command("MarkdownTableOpenLink", function()
-    require("markdown-table-wrap.nav").open_link()
-  end, { desc = "Open the first link in the current Markdown table cell", force = true })
+  local target_commands = {
+    MarkdownTableOpen = { action = "open", desc = "Open the Markdown target under the cursor" },
+    MarkdownTableOpenSplit = { action = "open_split", desc = "Open the Markdown target in a split" },
+    MarkdownTableOpenVSplit = { action = "open_vsplit", desc = "Open the Markdown target in a vertical split" },
+    MarkdownTableOpenTab = { action = "open_tab", desc = "Open the Markdown target in a tab" },
+    MarkdownTableOpenLink = {
+      action = "open",
+      desc = "Open the Markdown target under the cursor (compatibility alias)",
+    },
+  }
+  for command, spec in pairs(target_commands) do
+    local action_name = spec.action
+    local description = spec.desc
+    vim.api.nvim_create_user_command(command, function()
+      M.action(action_name)
+    end, { desc = description, force = true })
+  end
+
+  vim.api.nvim_create_user_command("MarkdownTableInspect", function()
+    M.action("inspect")
+  end, { desc = "Inspect the active Markdown table view and Source context", force = true })
+
+  vim.api.nvim_create_user_command("MarkdownTableHelp", function()
+    M.action("help")
+  end, { desc = "Show Markdown table view actions and configured keys", force = true })
 
   vim.api.nvim_create_user_command("MarkdownTableScrollDown", function(opts_cmd)
     local count = tonumber(opts_cmd.count) or 1

@@ -9,8 +9,8 @@ rename its development branch as part of a release.
 - Repository: `ice345/markdown-table-wrap.nvim`
 - Remote: `origin` (`git@github.com:ice345/markdown-table-wrap.nvim.git`)
 - Development/release branch: `master`
-- Latest published tag before this release: `v0.2.2`
-- Next planned release: `v0.2.3`
+- Latest published tag before this release: `v0.2.3`
+- Next planned release: `v0.3.0`
 - Supported Neovim baseline: 0.10+
 
 Verify these values rather than assuming the local checkout is current:
@@ -28,14 +28,14 @@ up to date with `origin/master`.
 
 ## 1. Freeze The Release Scope
 
-Before preparing v0.2.3:
+Before preparing v0.3.0:
 
-1. Stop adding features not listed in the v0.2.3 CHANGELOG section.
+1. Stop adding features not listed in the v0.3.0 CHANGELOG section.
 2. Review every commit since the previous release:
 
    ```sh
-   git log --oneline v0.2.1..master
-   git diff --stat v0.2.1..master
+   git log --oneline v0.2.3..master
+   git diff --stat v0.2.3..master
    ```
 
 3. Confirm each user-visible change has a regression test or a documented
@@ -46,19 +46,19 @@ Before preparing v0.2.3:
 
 ## 2. Align Version And Documentation
 
-For v0.2.3, all of the following must agree:
+For v0.3.0, all of the following must agree:
 
 - `M.version` in `lua/markdown-table-wrap/init.lua`
 - The top release in `CHANGELOG.md`
 - README configuration/default behavior
 - `doc/markdown-table-wrap.txt`
-- The annotated Git tag `v0.2.3`
+- The annotated Git tag `v0.3.0`
 - The GitHub release title
 
 Search for stale version/default references:
 
 ```sh
-rg -n '0\.2\.[0-9]+|map_gx|auto_open|your-name|ft = ' \
+rg -n '0\.[0-9]+\.[0-9]+|map_gx|auto_open|your-name|ft = ' \
   README.md CHANGELOG.md PUBLISHING.md ROADMAP.md doc lua tests
 ```
 
@@ -108,7 +108,7 @@ nvim --headless -u NONE \
 Open every relative link in README, CHANGELOG, PUBLISHING, and ROADMAP during
 release review, and confirm every referenced file exists in the checkout.
 
-## 4. Run The v0.2.3 Manual Matrix
+## 4. Run The v0.3.0 Manual Matrix
 
 Use a saved Markdown file with no table, one short table, one very wide table,
 several tables, links, escaped pipes, code spans, and mixed CJK/English text.
@@ -136,6 +136,12 @@ several tables, links, escaped pipes, code spans, and mixed CJK/English text.
 - Set `map_gx = true` and confirm table links open through the opt-in mapping.
 - Confirm Reader `gx` opens the original URL rather than its displayed label.
 - Confirm ordinary links outside tables retain their normal behavior.
+- Confirm Reader ordinary positions delegate custom callback/string/expr `gx`
+  mappings exactly once and rendered targets do not also run the fallback.
+- Open relative/absolute files, same-file/file anchors, wiki links, URLs,
+  images, missing targets, and a cell with multiple targets from Reader and
+  Float. Confirm relative paths use the Source directory.
+- Confirm edit/split/vsplit/tab target strategies and one custom resolver.
 
 ### Reader, Inline, And Float
 
@@ -164,6 +170,14 @@ several tables, links, escaped pipes, code spans, and mixed CJK/English text.
   already open Reader adopts them; confirm a delayed pre-setup refresh cannot
   overwrite the new configuration.
 - Confirm Float opens, scrolls, follows link metadata, and closes with `q`.
+- Confirm native `:bnext`, `:bprevious`, and `<C-^>` leave Reader without a
+  listed scratch buffer or lost Source changes, including with `hidden` off.
+- Confirm custom `H`/`L`, Bufferline, Telescope, and Harpoon transitions using
+  explicit Reader passthrough or leave-then-delegate actions.
+- Open the same Source in two windows with different widths. Confirm independent
+  Readers, Source edit refresh, and cleanup after closing either Reader.
+- Run `:MarkdownTableInspect`, `:MarkdownTableHelp`, and the statusline API in
+  Source, Inline, Reader, and Float.
 
 ### Parsing, Performance, Theme, And Filetypes
 
@@ -207,36 +221,32 @@ git rev-parse origin/master
 
 The final two commit IDs must match and `git status --short` must be empty.
 
-## 6. Tag v0.2.3
+## 6. Tag v0.3.0
 
 Create an annotated tag on the verified `master` commit:
 
 ```sh
-git tag -a v0.2.3 -m "markdown-table-wrap.nvim v0.2.3"
-git show --stat v0.2.3
-git push origin v0.2.3
+git tag -a v0.3.0 -m "markdown-table-wrap.nvim v0.3.0"
+git show --stat v0.3.0
+git push origin v0.3.0
 ```
 
 Never move or reuse a published tag. If a release contains a defect, prepare a
-new patch release such as v0.2.3.
+new patch release such as v0.3.1.
 
 ## 7. Publish The GitHub Release
 
 Create a release from the existing tag:
 
 ```sh
-gh release create v0.2.3 \
-  --title "markdown-table-wrap.nvim v0.2.3" \
+gh release create v0.3.0 \
+  --title "markdown-table-wrap.nvim v0.3.0" \
   --notes-file /path/to/release-notes.md
 ```
 
-The notes should be derived from the v0.2.2 CHANGELOG entry and should state
-the two intentional default changes prominently:
-
-- Reader automatically opens only for supported buffers that contain a table;
-  users can set `reader.auto_open = "always"` for the previous behavior.
-- Source-buffer `gx` mapping is opt-in with `map_gx = true`; default setup leaves
-  existing mappings untouched.
+The notes should be derived from the v0.3.0 CHANGELOG entry. State explicitly
+that existing v0.2 setup remains compatible, v0.2.4 work was folded into this
+release, and no new Source mapping is enabled by default.
 
 The real media currently tracked in this repository are:
 
@@ -260,7 +270,7 @@ After publishing:
    return {
      {
        "ice345/markdown-table-wrap.nvim",
-       version = "v0.2.3",
+       version = "v0.3.0",
        ft = { "markdown", "quarto", "rmd" },
        opts = {},
      },
@@ -269,76 +279,40 @@ After publishing:
 
 3. Run `:checkhealth markdown-table-wrap`.
 4. Open one table-free Markdown file and one file with a table.
-5. Confirm `require("markdown-table-wrap").version` reports `0.2.3`.
+5. Confirm `require("markdown-table-wrap").version` reports `0.3.0`.
 6. Confirm README and Vim help match the installed tag rather than unreleased
    `master` behavior.
 
-## v0.2.3 Release Notes Draft
+## v0.3.0 Release Notes Draft
 
-### markdown-table-wrap.nvim v0.2.3
+### markdown-table-wrap.nvim v0.3.0
 
-v0.2.3 is a focused Inline rendering correction release.
-
-Highlights:
-
-- Linked semantic content highlights are background-transparent by default, so
-  colorscheme backgrounds no longer turn every Inline cell into a filled
-  rectangle. Add an explicit `bg` when a filled background is intentional.
-- Inline-code delimiters inside link and image labels are removed before width
-  calculation, keeping concealed backticks from shifting table separators.
-- Regression coverage now exercises the linked-highlight background policy and
-  code-wrapped links in rendered tables.
-
-Known scope:
-
-- Inline mode still depends on terminal/compositor behavior around conceal,
-  virtual text, virtual lines, and soft wrapping. Reader remains the most stable
-  view for wide tables.
-- This patch release does not change the parser's supported Markdown dialect.
-
-## v0.2.2 Release Notes Draft
-
-### markdown-table-wrap.nvim v0.2.2
-
-v0.2.2 is a stability and editor-coexistence release. It keeps the existing
-Reader/Inline/Float workflow while making default setup less invasive and
-large-document refreshes more predictable.
+v0.3.0 makes Source, Inline, Reader, and Float operate as views of one
+canonical Markdown Source while preserving the stable wide-table renderer.
 
 Highlights:
 
-- Reader now automatically opens only when a supported buffer contains a table.
-  Set `reader.auto_open = "always"` to retain the earlier all-document Reader
-  behavior.
-- `map_gx` now defaults to `false`, preserving native and user mappings in
-  Source buffers. Table-aware link opening remains available through
-  `:MarkdownTableOpenLink`, Reader links, or explicit opt-in.
-- Interactive view state and deferred refresh work are isolated by buffer, so
-  commands or edits in one document do not change another document's mode.
-- Table discovery avoids the previous quadratic worst case on long runs of
-  pipe-like text.
-- Top-level parsing now accepts up to three spaces of indentation, missing-cell
-  body rows, and arbitrary-length matching backtick spans while terminating
-  safely at new Markdown block starts.
-- Continuous border highlight spans reduce Reader extmark counts for large
-  tables.
-- Inline window options are restored when the view is cleared or left.
-- Table highlight groups are reapplied after `:colorscheme` changes.
-- Standard Neovim `rmd` filetype detection is supported, and public installation
-  examples load `markdown`, `quarto`, and `rmd`.
-- `get_buffer_config(bufnr)` and `get_preview_mode(bufnr)` expose effective
-  per-buffer view configuration for integrations and diagnostics.
-- Custom theme presets present on `master` after v0.2.1 are included in the
-  patch release.
+- Reader `gx` safely falls back to the user's Source mapping, and normal buffer
+  exits preserve unsaved Source state.
+- Relative files, anchors, wiki links, URLs, images, split/tab opening, and
+  custom resolvers work through one Source-aware target model.
+- Configurable Reader/Float mappings, explicit passthrough, stable `<Plug>`
+  actions, context/events, Inspect, Help, statusline, and expanded health
+  diagnostics make every mode integratable and discoverable.
+- Multiple Reader windows for one Source keep independent geometry and refresh
+  from Source edits safely.
+- Oversized inline-code tokens split by display width so narrow tmux panes keep
+  table borders aligned.
+- The headless suite covers 122 parser, renderer, navigation, mapping, link,
+  lifecycle, multi-window, inspection, and compatibility cases.
 
 Known scope:
 
-- Inline mode still depends on terminal/compositor behavior around conceal,
-  virtual text, virtual lines, and soft wrapping. Reader remains the most stable
-  view for wide tables.
-- The parser targets common GFM pipe tables; broader GFM conformance and
-  optional Tree-sitter discovery are planned for v0.3.
-- The plugin remains table-focused and does not replace a general Markdown
-  renderer.
+- Inline remains dependent on terminal/compositor behavior around conceal,
+  virtual text, virtual lines, and soft wrapping. Reader remains the stable
+  view for very wide tables.
+- Third-party Bufferline/Telescope/Harpoon workflows remain release-time manual
+  checks; the plugin does not add those dependencies.
 
 ## Future Releases
 

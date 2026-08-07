@@ -541,6 +541,19 @@ function M.update_wrap_for_cursor(bufnr)
   return true
 end
 
+function M.get_state(bufnr)
+  bufnr = normalize_bufnr(bufnr)
+  if not active_buffers[bufnr] then
+    return nil
+  end
+
+  return {
+    tables = vim.deepcopy(active_tables[bufnr] or {}),
+    config = vim.deepcopy(active_configs[bufnr] or {}),
+    view_offsets = vim.deepcopy(view_offsets[bufnr] or {}),
+  }
+end
+
 function M.namespace()
   return namespace
 end
