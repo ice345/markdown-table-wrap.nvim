@@ -90,6 +90,73 @@ h.test("reader replaces source tables without modifying Markdown", function()
   end)
 end)
 
+h.test("reader table overlay prevents secondary Markdown parsing from shifting borders", function()
+  local plugin = require("markdown-table-wrap")
+
+  plugin.setup({
+    auto_preview = false,
+    preview_mode = "reader",
+    fit_to_window = true,
+    min_col_width = 8,
+    max_col_width = 28,
+  })
+
+  local source_lines = {
+    "| Probe | Candidate | Section | Risk | Meaning |",
+    "|---|---|---|---|---|",
+    '| kprobe/kretprobe | `kprobe:<discovered_function>` | `SEC("kprobe/<function>")` / `SEC("kretprobe/<function>")`，通常是 `BPF_PROG_TYPE_KPROBE` | kernel function ABI、符号和版本 | 观察实现函数 entry/return；函数可能服务多个调用路径 |',
+  }
+
+  h.with_buffer(source_lines, function(source_bufnr)
+    vim.bo[source_bufnr].filetype = "markdown"
+    vim.api.nvim_win_set_width(0, 100)
+
+    local reader_bufnr = plugin.reader_preview()
+    local rendered_lines = vim.api.nvim_buf_get_lines(reader_bufnr, 0, -1, false)
+    local ns = vim.api.nvim_get_namespaces()["markdown-table-wrap-reader"]
+    local marks = vim.api.nvim_buf_get_extmarks(reader_bufnr, ns, 0, -1, { details = true })
+    local overlays = {}
+    local concealed_rows = {}
+    local underscore_chunks = 0
+
+    for _, mark in ipairs(marks) do
+      local row = mark[2]
+      local details = mark[4]
+      if details.conceal ~= nil then
+        concealed_rows[row] = true
+      end
+      if details.virt_text then
+        local parts = {}
+        for _, chunk in ipairs(details.virt_text) do
+          table.insert(parts, chunk[1])
+          if chunk[1]:find("_", 1, true) then
+            underscore_chunks = underscore_chunks + 1
+            h.assert_eq("underscore remains code-styled", chunk[2], "MarkdownTableWrapCode")
+          end
+        end
+        overlays[row] = table.concat(parts)
+        h.assert_eq("Reader overlay replaces Markdown syntax", details.hl_mode, "replace")
+      end
+    end
+
+    h.assert_eq("every rendered table line has an overlay", vim.tbl_count(overlays), #rendered_lines)
+    h.assert_eq("every rendered table line hides secondary syntax", vim.tbl_count(concealed_rows), #rendered_lines)
+    h.assert_true("regression sample retains code underscores", underscore_chunks > 0)
+
+    for row, line in ipairs(rendered_lines) do
+      h.assert_eq("overlay text exactly matches real Reader line " .. row, overlays[row - 1], line)
+      h.assert_true("narrow regression line fits the window " .. row, vim.api.nvim_strwidth(line) <= 90)
+    end
+
+    h.assert_true(
+      "source with underscore code is unchanged",
+      vim.deep_equal(vim.api.nvim_buf_get_lines(source_bufnr, 0, -1, false), source_lines)
+    )
+    plugin.close_reader()
+    plugin.state.paused_buffers[source_bufnr] = nil
+  end)
+end)
+
 h.test("reader toggle switches between rendered and source views", function()
   local plugin = require("markdown-table-wrap")
   local reader = require("markdown-table-wrap.reader")

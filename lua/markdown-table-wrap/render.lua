@@ -117,6 +117,58 @@ local function border_ranges(text)
   return ranges
 end
 
+local function append_display_chunk(chunks, text, hl_group)
+  if text == "" then
+    return
+  end
+
+  local last = chunks[#chunks]
+  if last and last[2] == hl_group then
+    last[1] = last[1] .. text
+  else
+    table.insert(chunks, { text, hl_group })
+  end
+end
+
+local function append_plain_display_chunks(chunks, text, line_hl)
+  for ch in iter_chars_with_pos(text) do
+    append_display_chunk(chunks, ch, render_border_chars[ch] and "MarkdownTableWrapBorder" or line_hl)
+  end
+end
+
+-- Build an authoritative virtual-text representation of a rendered line.
+-- Reader uses this to prevent its markdown filetype (and third-party markdown
+-- renderers) from parsing underscores, angle brackets, and similar characters
+-- in the already-rendered table a second time. The real line remains intact for
+-- search, selection, and yank.
+function M.display_chunks(line_obj, line_index)
+  local line = type(line_obj) == "table" and line_obj.text or line_obj or ""
+  local is_header = type(line_obj) == "table" and line_obj.is_header == true
+  local line_hl = (is_header or line_index == 2) and "MarkdownTableWrapHeader" or "MarkdownTableWrapInline"
+  local result = {}
+  local cursor = 0
+  local styled_chunks = type(line_obj) == "table" and vim.deepcopy(line_obj.chunks or {}) or {}
+
+  table.sort(styled_chunks, function(a, b)
+    return a.start_col < b.start_col
+  end)
+
+  for _, styled in ipairs(styled_chunks) do
+    if cursor < styled.start_col then
+      append_plain_display_chunks(result, line:sub(cursor + 1, styled.start_col), line_hl)
+    end
+
+    append_display_chunk(result, line:sub(styled.start_col + 1, styled.end_col), styled.hl_group)
+    cursor = styled.end_col
+  end
+
+  if cursor < #line then
+    append_plain_display_chunks(result, line:sub(cursor + 1), line_hl)
+  end
+
+  return result
+end
+
 local function apply_highlights(buf, lines, config, opts)
   opts = opts or {}
   ensure_highlights(config)

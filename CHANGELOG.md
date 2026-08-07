@@ -4,6 +4,14 @@ All notable changes to `markdown-table-wrap.nvim` are documented here.
 
 ## Unreleased
 
+### Fixed
+
+- Prevent Reader tables from being parsed a second time by Markdown syntax or
+  third-party renderers. Inline-code underscores and angle brackets now keep
+  their literal display width and semantic code styling, so narrow wrapped
+  cells cannot move vertical borders; the real rendered lines remain available
+  for search, selection, and yank.
+
 ## 0.3.0 - Transparent Modes And Neovim Integration
 
 ### Added

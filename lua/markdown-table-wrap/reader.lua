@@ -81,12 +81,37 @@ end
 
 local function apply_table_highlights(reader_bufnr, built, config)
   vim.api.nvim_buf_clear_namespace(reader_bufnr, namespace, 0, -1)
+  local overlay_priority = math.max(config.overlay_priority or 10000, 10000)
   for _, segment in ipairs(built.segments) do
     render.apply_highlights(reader_bufnr, segment.rendered.line_objects, config, {
       namespace = namespace,
       start_row = segment.start_row,
       clear = false,
     })
+
+    -- Reader keeps the source filetype so prose can still use normal Markdown
+    -- rendering. Hide only the already-rendered table text and redraw it as an
+    -- authoritative overlay. Otherwise Markdown syntax can pair underscores or
+    -- angle brackets across cells, conceal them, and move the visible borders.
+    for index, line_obj in ipairs(segment.rendered.line_objects) do
+      local row = segment.start_row + index - 1
+      local line = line_obj.text or ""
+      if line ~= "" then
+        vim.api.nvim_buf_set_extmark(reader_bufnr, namespace, row, 0, {
+          end_row = row,
+          end_col = #line,
+          conceal = "",
+          priority = 9999,
+        })
+        vim.api.nvim_buf_set_extmark(reader_bufnr, namespace, row, 0, {
+          virt_text = render.display_chunks(line_obj, index),
+          virt_text_pos = "overlay",
+          hl_mode = "replace",
+          right_gravity = false,
+          priority = overlay_priority,
+        })
+      end
+    end
   end
 end
 

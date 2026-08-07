@@ -303,7 +303,7 @@ Highlights:
   from Source edits safely.
 - Oversized inline-code tokens split by display width so narrow tmux panes keep
   table borders aligned.
-- The headless suite covers 122 parser, renderer, navigation, mapping, link,
+- The headless suite covers 123 parser, renderer, navigation, mapping, link,
   lifecycle, multi-window, inspection, and compatibility cases.
 
 Known scope:

@@ -35,6 +35,11 @@ Unlike inline extmark replacement, reader mode is not layered over long raw
 table rows. Native wrap therefore cannot reveal source pipes or URLs beneath
 the rendered table.
 
+Rendered table rows are also protected from a second Markdown syntax pass.
+Literal underscores and angle brackets inside rendered code keep their display
+width and cannot move table borders. The underlying Reader rows remain real
+text for search, selection, and yank.
+
 Cell wrapping uses Neovim display width. Inline-code spans remain intact when
 they fit their allocated column; if a code token is wider than that column, it
 is split at character boundaries so narrow Reader and Inline tables keep their

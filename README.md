@@ -202,6 +202,10 @@ earlier behavior of opening Reader for every supported buffer.
 
 Reader contains the complete document and fully rendered tables. No table needs
 cursor focus, and the source buffer remains untouched in the background.
+Reader protects those finished table rows from being interpreted as Markdown a
+second time. Characters such as `_` and `<...>` inside rendered code therefore
+remain literal and cannot shift a wrapped border, while search and yank still
+operate on the real rendered lines underneath the display layer.
 
 The default interaction model is:
 
