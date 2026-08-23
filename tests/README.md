@@ -22,6 +22,7 @@ were added:
 | Links and mappings | `links_spec.lua`, `mappings_spec.lua` | relative/absolute files, line/anchor/wiki/image/URL targets, Float/Reader metadata, custom resolver, selector, callback/string/expr/remap/replace_keycodes restore semantics |
 | Interaction | `nav_spec.lua`, `config_spec.lua`, `system_spec.lua` | cell navigation, commands, lazy-loading timing, configuration validation, filetype boundaries |
 | Themes | `theme_spec.lua` | presets, overrides, auto-detection, and theme files |
+| v0.4 model/performance | `v04_spec.lua`, `fixtures/gfm_tables.lua`, `benchmark.lua` | exact Source spans, token contract, classified GFM corpus, discovery fallback, cache invalidation/cleanup, reference budgets |
 
 Headless tests prove parser and Neovim API behavior. Keep these manual checks
 for each release because terminal font shaping, compositor behavior, and other
@@ -42,3 +43,12 @@ plugins' extmarks are outside a headless process:
    Float, including a missing target that must preserve the current view.
 8. Test at least one Linux terminal/compositor and one macOS terminal when
    changing overlay, conceal, or wrap behavior.
+9. Switch away from an automatically opened Reader with native buffer
+   navigation, return to its Source, and verify Reader reopens; explicit close
+   or edit must remain paused.
+10. Run `tests/benchmark.lua` and compare its scenarios with
+    `docs/performance.md` on the same machine used for the release check.
+11. For large Reader or extmark changes, rerun the benchmark with
+    `MARKDOWN_TABLE_WRAP_BENCH_READER=1`; then repeat `gg`, `G`, search,
+    selection, and yank in a real UI because headless cursor timing excludes
+    terminal redraw.

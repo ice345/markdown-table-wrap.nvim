@@ -23,6 +23,10 @@ Read [tests/README.md](tests/README.md) before adding a feature: it maps the
 test layers and lists terminal-specific release checks that headless CI cannot
 cover.
 
+Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before changing module
+ownership, mode state, Source mapping, lifecycle, caches, or rendering data
+flow.
+
 ## Pull Requests
 
 - Keep changes focused on Markdown table rendering unless the issue explicitly asks for broader Markdown behavior.

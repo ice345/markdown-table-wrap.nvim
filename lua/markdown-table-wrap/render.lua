@@ -369,6 +369,8 @@ local function add_cell_chunks(chunks, cell_line, offset, cell_index)
         kind = span.kind,
         url = span.url,
         cell_index = cell_index,
+        source_start_col = span.source_start_col,
+        source_end_col = span.source_end_col,
       })
     end
   end
@@ -407,6 +409,13 @@ local function render_row(row, col_widths, align, chars, config)
         index = col,
         start_col = offset,
         end_col = offset + #(" " .. padded .. " "),
+        text = cell_text,
+        segment_index = cell.segment_index or line_index,
+        table_id = cell.table_id,
+        row_index = cell.row_index,
+        column_index = cell.column_index or col,
+        source_span = cell.source_span,
+        present = cell.present,
       })
       offset = offset + #(" " .. padded .. " ")
       table.insert(parts, chars.vertical)
@@ -420,6 +429,26 @@ local function render_row(row, col_widths, align, chars, config)
 end
 
 function M.render_table(table_info, config)
+  local layout_key = table.concat({
+    tostring(table_info.id or table_info.start_lnum),
+    tostring(text_area_width()),
+    tostring(config.max_width_ratio),
+    tostring(config.min_col_width),
+    tostring(config.max_col_width),
+    tostring(config.fit_to_window),
+    tostring(config.use_unicode_border),
+    tostring(config.table_border),
+    tostring(config.row_separator),
+    vim.inspect(config.link or {}),
+  }, "\31")
+  local cache = require("markdown-table-wrap.cache")
+  local cached = table_info.source_bufnr
+      and cache.get(table_info.source_bufnr, "layout:" .. tostring(table_info.id), layout_key, table_info.changedtick)
+    or nil
+  if cached then
+    return cached
+  end
+
   local chars = border_chars(config)
   local col_widths = distribute_widths(table_info, config)
   local lines = {}
@@ -452,7 +481,7 @@ function M.render_table(table_info, config)
 
   append(border_line(chars, chars.bottom_left, chars.bottom_join, chars.bottom_right, col_widths), table_info.end_lnum)
 
-  return {
+  local rendered = {
     lines = vim.tbl_map(text_of, lines),
     line_objects = lines,
     source_lnums = source_lnums,
@@ -460,7 +489,20 @@ function M.render_table(table_info, config)
     height = #lines,
     start_lnum = table_info.start_lnum,
     end_lnum = table_info.end_lnum,
+    table_id = table_info.id,
+    source_span = table_info.source_span,
+    columns = #table_info.header,
   }
+  if table_info.source_bufnr then
+    cache.set(
+      table_info.source_bufnr,
+      "layout:" .. tostring(table_info.id),
+      layout_key,
+      table_info.changedtick,
+      rendered
+    )
+  end
+  return rendered
 end
 
 function M.open_float(rendered, config)

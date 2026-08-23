@@ -1,0 +1,80 @@
+-- Minimal fixtures derived from the GitHub Flavored Markdown table extension
+-- examples: https://github.github.com/gfm/#tables-extension-
+return {
+  source = "GitHub Flavored Markdown Spec, Tables (extension)",
+  cases = {
+    {
+      id = "gfm-198-basic",
+      classification = "supported",
+      lines = { "| foo | bar |", "| --- | --- |", "| baz | bim |" },
+      columns = 2,
+      rows = 1,
+    },
+    {
+      id = "gfm-199-alignment",
+      classification = "supported",
+      lines = { "| abc | defghi |", ":--- | :----:", "bar | baz" },
+      columns = 2,
+      rows = 1,
+    },
+    {
+      id = "gfm-200-escaped-and-code-pipes",
+      classification = "supported",
+      lines = { "| f\\|oo | `b|ar` |", "| --- | --- |", "| baz | bim |" },
+      columns = 2,
+      rows = 1,
+    },
+    {
+      id = "gfm-201-delimiter-mismatch",
+      classification = "invalid",
+      lines = { "| abc | def |", "| --- |", "| bar | baz |" },
+    },
+    {
+      id = "gfm-202-body-normalization",
+      classification = "supported",
+      lines = { "| abc | def |", "| --- | --- |", "| bar |", "| bar | baz | boo |" },
+      columns = 2,
+      rows = 2,
+    },
+    {
+      id = "container-prefix-blockquote",
+      classification = "unsupported",
+      lines = { "> | abc | def |", "> | --- | --- |", "> | bar | baz |" },
+      reason = "container prefixes remain visible until their source spans are unambiguous",
+    },
+    {
+      id = "container-prefix-list",
+      classification = "unsupported",
+      lines = { "- | abc | def |", "  | --- | --- |", "  | bar | baz |" },
+      reason = "list container prefixes remain visible until Source ranges are lossless",
+    },
+    {
+      id = "fenced-table-shaped-text",
+      classification = "invalid",
+      lines = { "```markdown", "| abc | def |", "| --- | --- |", "```" },
+    },
+    {
+      id = "pipe-like-prose",
+      classification = "invalid",
+      lines = { "abc | def", "not a delimiter | still prose" },
+    },
+    {
+      id = "heading-boundary",
+      classification = "boundary",
+      lines = { "| abc | def |", "| --- | --- |", "| bar | baz |", "# next | block" },
+      end_lnum = 3,
+    },
+    {
+      id = "definition-boundary",
+      classification = "boundary",
+      lines = { "| abc | def |", "| --- | --- |", "| bar | baz |", "[ref]: https://example.com/a|b" },
+      end_lnum = 3,
+    },
+    {
+      id = "html-block-boundary",
+      classification = "boundary",
+      lines = { "| abc | def |", "| --- | --- |", "| bar | baz |", "<div>next | block</div>" },
+      end_lnum = 3,
+    },
+  },
+}

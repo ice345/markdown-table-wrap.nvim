@@ -141,6 +141,7 @@ h.test("reader table overlay prevents secondary Markdown parsing from shifting b
 
     h.assert_eq("every rendered table line has an overlay", vim.tbl_count(overlays), #rendered_lines)
     h.assert_eq("every rendered table line hides secondary syntax", vim.tbl_count(concealed_rows), #rendered_lines)
+    h.assert_eq("Reader uses one authoritative extmark per rendered table line", #marks, #rendered_lines)
     h.assert_true("regression sample retains code underscores", underscore_chunks > 0)
 
     for row, line in ipairs(rendered_lines) do

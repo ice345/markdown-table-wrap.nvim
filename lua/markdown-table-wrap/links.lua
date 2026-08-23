@@ -158,10 +158,12 @@ function M.extract(line, source_path)
     if not start_col then
       break
     end
-    local target = M.classify(value, { kind = "wiki_link", label = value, source_path = source_path })
-    target.start_col = start_col - 1
-    target.end_col = end_col
-    table.insert(candidates, target)
+    if not overlaps(candidates, start_col - 1, end_col) then
+      local target = M.classify(value, { kind = "wiki_link", label = value, source_path = source_path })
+      target.start_col = start_col - 1
+      target.end_col = end_col
+      table.insert(candidates, target)
+    end
     cursor = end_col + 1
   end
 
@@ -213,7 +215,11 @@ local function rendered_targets(context)
   local line_object = state and state.line_objects[row] or nil
   local targets = {}
   for _, chunk in ipairs(type(line_object) == "table" and line_object.chunks or {}) do
-    if (chunk.kind == "link" or chunk.kind == "image") and chunk.url and chunk.url ~= "" then
+    if
+      (chunk.kind == "link" or chunk.kind == "image" or chunk.kind == "wiki_link")
+      and chunk.url
+      and chunk.url ~= ""
+    then
       local target = M.classify(chunk.url, {
         kind = chunk.kind,
         source_path = context.source_path,
@@ -230,6 +236,24 @@ function M.targets(context)
   local targets = rendered_targets(context)
   if #targets > 0 then
     return targets, context.cursor.view_col or 0
+  end
+
+  if context.cell and context.cell.tokens then
+    for _, link in
+      ipairs(require("markdown-table-wrap.markdown").extract_links(context.cell, { coordinates = "source" }))
+    do
+      local target = M.classify(link.target, {
+        kind = link.kind,
+        label = link.text,
+        source_path = context.source_path,
+      })
+      target.start_col = link.start_col
+      target.end_col = link.end_col
+      table.insert(targets, target)
+    end
+    if #targets > 0 then
+      return targets, context.cursor.source_col or 0
+    end
   end
 
   local lnum = context.cursor.source_lnum or 1

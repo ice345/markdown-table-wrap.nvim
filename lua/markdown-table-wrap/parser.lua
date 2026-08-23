@@ -95,12 +95,11 @@ local function has_unescaped_pipe(line)
   return false
 end
 
-local function split_pipe_row(line)
-  local cells = {}
-  local current = {}
+local function split_pipe_row(line, lnum, references)
+  local segments = {}
   local code_ticks = nil
   local escaped = false
-  local trailing_separator = false
+  local segment_start = 1
   local index = 1
 
   while index <= #line do
@@ -110,17 +109,11 @@ local function split_pipe_row(line)
     end
 
     if escaped then
-      table.insert(current, ch)
       escaped = false
-      trailing_separator = false
     elseif ch == "\\" then
       escaped = true
-      table.insert(current, ch)
-      trailing_separator = false
     elseif ch == "`" then
       local count, run_end = backtick_run_at(line, index)
-      table.insert(current, line:sub(index, run_end))
-      trailing_separator = false
       if not code_ticks then
         code_ticks = count
       elseif count == code_ticks then
@@ -129,34 +122,60 @@ local function split_pipe_row(line)
       index = run_end + 1
       goto continue
     elseif ch == "|" and not code_ticks then
-      table.insert(cells, trim(table.concat(current)))
-      current = {}
-      trailing_separator = true
-    else
-      table.insert(current, ch)
-      if ch:match("%s") == nil then
-        trailing_separator = false
-      end
+      table.insert(segments, { start_col = segment_start, end_col = index - 1 })
+      segment_start = end_col + 1
     end
 
     index = end_col + 1
     ::continue::
   end
 
-  table.insert(cells, trim(table.concat(current)))
+  table.insert(segments, { start_col = segment_start, end_col = #line })
 
   local stripped = trim(line)
-
   if vim.startswith(stripped, "|") then
-    table.remove(cells, 1)
+    table.remove(segments, 1)
+  end
+  local last_segment = segments[#segments]
+  if last_segment and line:sub(last_segment.start_col, last_segment.end_col):match("^%s*$") and #segments > 1 then
+    table.remove(segments)
   end
 
-  if trailing_separator then
-    table.remove(cells)
-  end
+  local cells = {}
+  for cell_index, segment in ipairs(segments) do
+    local start_col = segment.start_col
+    local end_col = segment.end_col
+    while start_col <= end_col and line:sub(start_col, start_col):match("%s") do
+      start_col = start_col + 1
+    end
+    while end_col >= start_col and line:sub(end_col, end_col):match("%s") do
+      end_col = end_col - 1
+    end
 
-  for index, cell in ipairs(cells) do
-    cells[index] = markdown.parse_inline(cell:gsub("\\|", "|"))
+    local raw = start_col <= end_col and line:sub(start_col, end_col) or ""
+    local cell = markdown.parse_inline(raw, { references = references })
+    cell.raw = raw
+    cell.present = true
+    cell.column_index = cell_index
+    cell.source_span = {
+      start_lnum = lnum,
+      start_col = start_col - 1,
+      end_lnum = lnum,
+      end_col = math.max(start_col - 1, end_col),
+    }
+    for _, token in ipairs(cell.tokens or {}) do
+      token.cell_source_start_col = token.source_start_col
+      token.cell_source_end_col = token.source_end_col
+      token.source_start_col = cell.source_span.start_col + token.source_start_col
+      token.source_end_col = cell.source_span.start_col + token.source_end_col
+    end
+    for _, span in ipairs(cell.spans or {}) do
+      span.cell_source_start_col = span.source_start_col
+      span.cell_source_end_col = span.source_end_col
+      span.source_start_col = cell.source_span.start_col + span.source_start_col
+      span.source_end_col = cell.source_span.start_col + span.source_end_col
+    end
+    table.insert(cells, cell)
   end
 
   return cells
@@ -347,17 +366,40 @@ local function starts_block(line)
   return content:match("^%[[^%]]+%]:[ \t]*%S") ~= nil
 end
 
-local function normalize_row(row, count)
+local function normalize_row(row, count, lnum, line, kind)
   local normalized = {}
+  local line_end = #(line or "")
 
   for index = 1, count do
-    normalized[index] = row[index] or markdown.parse_inline("")
+    local cell = row[index]
+    if not cell then
+      cell = markdown.parse_inline("")
+      cell.raw = ""
+      cell.present = false
+      cell.source_span = {
+        start_lnum = lnum,
+        start_col = line_end,
+        end_lnum = lnum,
+        end_col = line_end,
+      }
+    end
+    cell.column_index = index
+    normalized[index] = cell
+  end
+
+  normalized.kind = kind
+  normalized.source_lnum = lnum
+  normalized.source_span = { start_lnum = lnum, start_col = 0, end_lnum = lnum, end_col = line_end }
+  normalized.raw_cell_count = #row
+  normalized.overflow_cells = {}
+  for index = count + 1, #row do
+    table.insert(normalized.overflow_cells, row[index])
   end
 
   return normalized
 end
 
-local function parse_table_at(lines, start_lnum)
+local function parse_table_at(lines, start_lnum, references)
   local header_line = lines[start_lnum]
   local separator_line = lines[start_lnum + 1]
 
@@ -371,8 +413,8 @@ local function parse_table_at(lines, start_lnum)
     return nil
   end
 
-  local header = split_pipe_row(header_line)
-  local separator = split_pipe_row(separator_line)
+  local header = split_pipe_row(header_line, start_lnum, references)
+  local separator = split_pipe_row(separator_line, start_lnum + 1, references)
 
   if #header == 0 then
     return nil
@@ -397,27 +439,100 @@ local function parse_table_at(lines, start_lnum)
       break
     end
 
-    table.insert(rows, normalize_row(split_pipe_row(line), #header))
+    table.insert(rows, normalize_row(split_pipe_row(line, lnum, references), #header, lnum, line, "body"))
     end_lnum = lnum
     lnum = lnum + 1
   end
 
+  local table_id = string.format("%d:%d", start_lnum, end_lnum)
+  local normalized_header = normalize_row(header, #header, start_lnum, header_line, "header")
+  for row_index, row in ipairs(rows) do
+    row.row_index = row_index
+    row.table_id = table_id
+    for _, cell in ipairs(row) do
+      cell.row_index = row_index
+      cell.table_id = table_id
+    end
+    for _, cell in ipairs(row.overflow_cells or {}) do
+      cell.row_index = row_index
+      cell.table_id = table_id
+    end
+  end
+  normalized_header.row_index = 0
+  normalized_header.table_id = table_id
+  for _, cell in ipairs(normalized_header) do
+    cell.row_index = 0
+    cell.table_id = table_id
+  end
+  for _, cell in ipairs(separator) do
+    cell.row_index = -1
+    cell.table_id = table_id
+  end
+
   return {
+    id = table_id,
     start_lnum = start_lnum,
     separator_lnum = start_lnum + 1,
     end_lnum = end_lnum,
-    header = normalize_row(header, #header),
+    source_span = {
+      start_lnum = start_lnum,
+      start_col = 0,
+      end_lnum = end_lnum,
+      end_col = #(lines[end_lnum] or ""),
+    },
+    header = normalized_header,
+    delimiter = {
+      source_lnum = start_lnum + 1,
+      source_span = {
+        start_lnum = start_lnum + 1,
+        start_col = 0,
+        end_lnum = start_lnum + 1,
+        end_col = #separator_line,
+      },
+      cells = separator,
+    },
     align = align,
     rows = rows,
   }
 end
 
-local function parse_lines(lines, stop_lnum)
+local function collect_references(lines)
+  local references = {}
+  for lnum, line in ipairs(lines) do
+    local label, target = line:match("^%s?%s?%s?%[([^%]]+)%]:%s*(%S+)")
+    if label and target then
+      if target:sub(1, 1) == "<" and target:sub(-1) == ">" then
+        target = target:sub(2, -2)
+      end
+      references[vim.trim(label):gsub("%s+", " "):lower()] = {
+        target = target,
+        source_span = { start_lnum = lnum, start_col = 0, end_lnum = lnum, end_col = #line },
+      }
+    end
+  end
+  return references
+end
+
+local function parse_lines(lines, stop_lnum, opts)
   local tables = {}
   local fenced_lines = {}
   local fence_char = nil
   local fence_length = nil
   local lnum = 1
+  local references = (opts or {}).references or collect_references(lines)
+
+  if opts and opts.ranges then
+    for _, range in ipairs(opts.ranges) do
+      if not stop_lnum or range.start_lnum <= stop_lnum then
+        local table_info = parse_table_at(lines, range.start_lnum, references)
+        if table_info then
+          table_info.discovery_backend = range.backend or "lua"
+          table.insert(tables, table_info)
+        end
+      end
+    end
+    return tables, fenced_lines
+  end
 
   while lnum <= #lines and (not stop_lnum or lnum <= stop_lnum) do
     local line = lines[lnum]
@@ -437,7 +552,7 @@ local function parse_lines(lines, stop_lnum)
         fence_length = opener_length
         lnum = lnum + 1
       else
-        local table_info = parse_table_at(lines, lnum)
+        local table_info = parse_table_at(lines, lnum, references)
         if table_info then
           table.insert(tables, table_info)
           lnum = table_info.end_lnum + 1
@@ -452,14 +567,16 @@ local function parse_lines(lines, stop_lnum)
 end
 
 function M.parse_at_cursor(bufnr, cursor_lnum)
-  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-  local tables, fenced_lines = parse_lines(lines, cursor_lnum)
+  local tables = M.parse_all(bufnr)
 
   for _, table_info in ipairs(tables) do
     if cursor_lnum >= table_info.start_lnum and cursor_lnum <= table_info.end_lnum then
       return table_info
     end
   end
+
+  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local _, fenced_lines = parse_lines(lines, cursor_lnum)
 
   if fenced_lines[cursor_lnum] then
     return nil, "MarkdownTableWrap: cursor is inside a fenced code block."
@@ -473,10 +590,72 @@ function M.parse_at_cursor(bufnr, cursor_lnum)
   return nil, "MarkdownTableWrap: no valid Markdown table separator row found."
 end
 
-function M.parse_all(bufnr)
+function M.parse_all(bufnr, opts)
+  opts = type(opts) == "table" and opts or {}
+  local changedtick = vim.api.nvim_buf_get_changedtick(bufnr)
+  local backend = opts.backend or (opts.discovery or {}).backend or "default"
+  local cache_key = table.concat({ tostring(backend), tostring(opts.cache ~= false) }, "\31")
+  local cache = require("markdown-table-wrap.cache")
+  local cached = opts.cache == false and nil or cache.get(bufnr, "parse", cache_key, changedtick)
+  if cached then
+    return cached
+  end
+
   local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-  local tables = parse_lines(lines)
+  local discovery_key = backend
+  local ranges = opts.cache == false and nil or cache.get(bufnr, "discovery", discovery_key, changedtick)
+  if not ranges then
+    ranges = require("markdown-table-wrap.discovery").discover(
+      bufnr,
+      lines,
+      { backend = backend ~= "default" and backend or nil }
+    )
+    if opts.cache ~= false then
+      cache.set(bufnr, "discovery", discovery_key, changedtick, ranges)
+    end
+  end
+  local tables = parse_lines(lines, nil, { ranges = ranges })
+  for _, table_info in ipairs(tables) do
+    table_info.source_bufnr = bufnr
+    table_info.changedtick = changedtick
+    table_info.id = string.format("%d:%s", bufnr, table_info.id)
+    table_info.source_signature = table.concat({ changedtick, table_info.start_lnum, table_info.end_lnum }, ":")
+    table_info.header.table_id = table_info.id
+    for _, cell in ipairs(table_info.header) do
+      cell.table_id = table_info.id
+    end
+    for _, cell in ipairs(table_info.delimiter.cells or {}) do
+      cell.table_id = table_info.id
+    end
+    for _, row in ipairs(table_info.rows) do
+      row.table_id = table_info.id
+      for _, cell in ipairs(row) do
+        cell.table_id = table_info.id
+      end
+      for _, cell in ipairs(row.overflow_cells or {}) do
+        cell.table_id = table_info.id
+      end
+    end
+  end
+  if opts.cache ~= false then
+    cache.set(bufnr, "parse", cache_key, changedtick, tables)
+  end
   return tables
+end
+
+function M.parse_lines(lines, opts)
+  if type(lines) ~= "table" then
+    error("lines: expected table, got " .. type(lines), 2)
+  end
+  local tables = parse_lines(lines, nil, opts)
+  return tables
+end
+
+function M.references(lines)
+  if type(lines) ~= "table" then
+    error("lines: expected table, got " .. type(lines), 2)
+  end
+  return collect_references(lines)
 end
 
 return M

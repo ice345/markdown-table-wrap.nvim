@@ -4,6 +4,37 @@ All notable changes to `markdown-table-wrap.nvim` are documented here.
 
 ## Unreleased
 
+## 0.4.0 - Exact Metadata, GFM Correctness, And Performance
+
+### Added
+
+- Add a pure line-array parser API and annotated table, row, cell, delimiter,
+  token, and Source-span models. Wrapped rendered cell segments retain stable
+  table/row/column identity and best-available Source byte ranges.
+- Replace pattern-only inline display parsing with source/render-spanned tokens
+  supporting arbitrary backtick runs, balanced-parenthesis destinations,
+  reference links, autolinks, nested emphasis, images, wiki links, and hard
+  breaks while leaving unsupported syntax visible.
+- Add an attributed GFM fixture corpus with explicit supported, invalid, and
+  deliberately unsupported classifications.
+- Add inspectable `auto`, `lua`, and optional `treesitter` discovery backends.
+  Explicit Tree-sitter discovery falls back safely; `auto` keeps the guaranteed
+  Lua scanner until benchmarks justify changing the default.
+- Add changedtick-aware parse and discovery caching plus window/config-aware
+  layout caching, cleanup diagnostics, and documented performance benchmarks.
+
+### Changed
+
+- Treat native buffer/window navigation away from Reader as temporary view
+  loss instead of explicit Source pause. Returning to an auto-preview Source
+  containing a table now restores Reader; explicit close/edit/toggle actions
+  continue to set `paused=true`.
+- Consolidate Reader table concealment and fully highlighted overlay into one
+  extmark per rendered line, removing redundant range highlights from large
+  full-document Readers.
+- Extend `:MarkdownTableInspect` and `:checkhealth markdown-table-wrap` with
+  discovery backend, fallback, cache-stage, hit/miss, and token-cache details.
+
 ### Fixed
 
 - Prevent Reader tables from being parsed a second time by Markdown syntax or

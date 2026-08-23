@@ -44,6 +44,35 @@ local function cell_context(source_bufnr, cursor, table_info)
     return nil
   end
 
+  local model_row
+  if cursor[1] == table_info.start_lnum then
+    model_row = table_info.header
+  else
+    for _, row in ipairs(table_info.rows or {}) do
+      if row.source_lnum == cursor[1] then
+        model_row = row
+        break
+      end
+    end
+  end
+  for index, cell in ipairs(model_row or {}) do
+    local span = cell.source_span
+    if span and cursor[2] >= span.start_col and cursor[2] <= span.end_col then
+      return {
+        index = index,
+        start_col = span.start_col,
+        end_col = span.end_col,
+        text = cell.text,
+        source_span = span,
+        table_id = table_info.id,
+        row_index = cell.row_index,
+        present = cell.present,
+        tokens = cell.tokens,
+        spans = cell.spans,
+      }
+    end
+  end
+
   local line = vim.api.nvim_buf_get_lines(source_bufnr, cursor[1] - 1, cursor[1], false)[1] or ""
   local spans = require("markdown-table-wrap.nav").spans(line)
   for index, span in ipairs(spans) do
@@ -109,6 +138,8 @@ function M.resolve(opts)
 
   local path = vim.api.nvim_buf_get_name(source_bufnr)
   local config = plugin.get_buffer_config(source_bufnr)
+  local cache_status = require("markdown-table-wrap.cache").inspect(source_bufnr)
+  local discovery_status = require("markdown-table-wrap.discovery").status(source_bufnr)
   local context = {
     mode = mode,
     source_bufnr = source_bufnr,
@@ -138,7 +169,14 @@ function M.resolve(opts)
       rendered = plugin.state.last_signature[source_bufnr] ~= nil,
       paused = plugin.state.paused_buffers[source_bufnr] == true,
       auto_preview = config.auto_preview == true,
+      enabled = cache_status.enabled,
+      entries = cache_status.entries,
+      stages = cache_status.stages,
+      hits = cache_status.hits,
+      misses = cache_status.misses,
+      token_entries = cache_status.token_entries,
     },
+    discovery = discovery_status,
   }
 
   if mode == "reader" then

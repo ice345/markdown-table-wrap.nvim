@@ -401,6 +401,38 @@ h.test("native Reader buffer exits preserve unsaved Source state", function()
   vim.o.hidden = original_hidden
 end)
 
+h.test("returning to a Source after native buffer navigation restores automatic Reader", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+
+  plugin.setup({ auto_preview = true, preview_mode = "reader", debounce_ms = 0 })
+  local source_bufnr = new_markdown_buffer(table_lines)
+  local target_bufnr = vim.api.nvim_create_buf(true, false)
+  vim.bo[target_bufnr].swapfile = false
+  vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, { "temporary target" })
+
+  vim.api.nvim_set_current_buf(source_bufnr)
+  local reader_bufnr = plugin.reader_preview()
+  h.assert_true("automatic Reader starts active", reader.is_reader(reader_bufnr))
+
+  vim.api.nvim_set_current_buf(target_bufnr)
+  vim.wait(100, function()
+    return not vim.api.nvim_buf_is_valid(reader_bufnr)
+  end, 5)
+  h.assert_eq("native navigation does not record an explicit pause", plugin.state.paused_buffers[source_bufnr], nil)
+
+  vim.api.nvim_set_current_buf(source_bufnr)
+  vim.wait(200, function()
+    return reader.is_reader(vim.api.nvim_get_current_buf())
+  end, 5)
+  h.assert_true("BufWinEnter restores Reader", reader.is_reader(vim.api.nvim_get_current_buf()))
+
+  plugin.close_reader()
+  plugin.state.paused_buffers[source_bufnr] = nil
+  delete_buffer(source_bufnr)
+  delete_buffer(target_bufnr)
+end)
+
 h.test("gx delegates ordinary text to the previous buffer-local mapping", function()
   local plugin = require("markdown-table-wrap")
   local fallback_calls = 0

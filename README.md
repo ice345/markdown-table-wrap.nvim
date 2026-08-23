@@ -189,8 +189,9 @@ return {
 }
 ```
 
-See [ROADMAP.md](ROADMAP.md) for the mode contracts and development order, and
-[PUBLISHING.md](PUBLISHING.md) for the release flow.
+See [PUBLISHING.md](PUBLISHING.md) for the release flow. The detailed roadmap
+is maintained locally by the project owner and is intentionally not shipped in
+the public plugin checkout.
 
 ## Default Behavior
 
@@ -216,6 +217,12 @@ The default interaction model is:
 - `:MarkdownTableToggleReader` switches between Reader and Source. Closing Reader pauses automatic reopening until the command is run again.
 - `:MarkdownTableEditSource` leaves Reader and keeps Source visible for a longer editing session.
 - `gx` opens the original URL under a rendered link.
+
+Native buffer/window navigation only dismisses the disposable Reader view. It
+does not set the Source pause flag, so returning to that Source applies the
+normal automatic Reader policy again. Explicit close, Source edit, disabling
+auto-preview, or switching view does set the corresponding persistent user
+intent.
 
 ### Choosing A View
 
@@ -391,6 +398,8 @@ require("markdown-table-wrap").setup({
   clear_on_insert = true,
   clear_on_visual = true,
   debounce_ms = 80,
+  discovery = { backend = "auto" }, -- "auto", "lua", or "treesitter"
+  cache = { enabled = true },
   overlay_priority = 10000,
   overlay_fill = true,
   inline_virtual_text = "overlay",
@@ -466,6 +475,12 @@ Options:
 - `clear_on_insert`: reveal source Markdown while editing, then re-render on `InsertLeave`.
 - `clear_on_visual`: in inline mode, reveal source Markdown while selecting text, then re-render after leaving Visual mode. Reader mode selects its real rendered lines directly.
 - `debounce_ms`: delay before automatic refresh after movement or text changes.
+- `discovery`: table-range discovery backend. `"auto"` currently chooses the
+  guaranteed Lua scanner; `"treesitter"` is optional and falls back to Lua
+  when the parser is missing, outdated, or does not expose pipe-table nodes.
+- `cache`: independently cache parsed Source models and rendered layouts.
+  Entries invalidate on Source changedtick and relevant window/configuration
+  signatures, and are released on buffer wipe.
 - `overlay_priority`: extmark priority used to cover other renderers such as `render-markdown.nvim`.
 - `overlay_fill`: fill the rest of each rendered source line with blank overlay text so long source rows do not leak past the rendered table.
 - `inline_virtual_text`: `"overlay"` or `"win_col"` for the replace-mode virtual text strategy. The default `"overlay"` is the more portable path.
@@ -641,6 +656,9 @@ local mode = table_wrap.get_preview_mode(0)
 local context = table_wrap.get_state(0)
 local source_bufnr = table_wrap.resolve_source_buffer(0)
 local component = table_wrap.statusline(0)
+local pure_tables = require("markdown-table-wrap.parser").parse_lines(lines)
+local discovery = require("markdown-table-wrap.discovery").status(0)
+local cache = require("markdown-table-wrap.cache").inspect(0)
 ```
 
 - `get_buffer_config(bufnr?)` returns a deep-copied effective configuration for
@@ -658,6 +676,12 @@ local component = table_wrap.statusline(0)
   the current set.
 - `statusline(bufnr?)` returns a compact string such as `MTW Reader T3:C2`, or
   an empty string when no valid context exists.
+- `parser.parse_lines(lines, opts?)` produces the Source-spanned table model
+  without requiring a live buffer. `parser.parse_all(bufnr, opts?)` is the thin
+  live-buffer adapter.
+- `discovery.status(bufnr?)` reports requested/selected backend and fallback
+  reason; `cache.inspect(bufnr?)` reports owned stages and aggregate hit/miss
+  counters.
 
 Stable normal-mode `<Plug>` mappings follow the
 `<Plug>(MarkdownTableWrapAction)` form. Actions are `ToggleReader`,
@@ -697,10 +721,17 @@ The current rendering model includes:
 - Cell navigation commands that understand inline code pipes like `` `a|b` ``.
 - Floating preview is retained for focused table-only inspection.
 - Top-level GFM pipe-table parsing with conservative Markdown block boundaries.
+- Exact Source byte spans for tables, delimiters, rows, cells, and inline
+  tokens, preserved on wrapped rendered cell segments.
+- Balanced inline link destinations, reference links, autolinks, nested
+  emphasis metadata, and arbitrary-length code-span delimiters.
+- Inspectable Lua/optional Tree-sitter discovery with safe fallback.
 - Inline code spans stay intact when they fit and split only when an oversized
   token would exceed its allocated display width.
 - Escaped pipes are displayed as `|`.
 - A headless Neovim regression suite exists in `tests/run.lua`.
+- Reference resource budgets and a reproducible benchmark are documented in
+  [docs/performance.md](docs/performance.md).
 - Tests are split by parser, Markdown, width, rendering, modes, lifecycle,
   multi-window context, actions, links, mappings, inspection, configuration,
   and the system render chain. See [tests/README.md](tests/README.md) for the
@@ -758,7 +789,8 @@ nvim --headless -u NONE --cmd "set shadafile=NONE" --cmd "set noswapfile" \
 ```
 
 The report includes the active Source/view context, resolver and mapping
-policy, theme, module loading, and `render-markdown.nvim` coexistence hint.
+policy, discovery backend/fallback, cache state, theme, module loading, and
+`render-markdown.nvim` coexistence hint.
 
 ## Help
 
@@ -797,7 +829,6 @@ markdown-table-wrap.nvim/
 ├── LICENSE
 ├── PUBLISHING.md
 ├── README.md
-├── ROADMAP.md
 ├── doc/
 │   ├── markdown-table-wrap.txt
 │   └── tags
@@ -805,11 +836,15 @@ markdown-table-wrap.nvim/
 │   ├── 01-inline-tokyonight.png
 │   ├── 02-inline-scroll.gif
 │   ├── 02b-inline-full-toggle.png
-│   └── 03-floating-long-table.png
+│   ├── 03-floating-long-table.png
+│   ├── ARCHITECTURE.md
+│   └── performance.md
 ├── lua/
 │   └── markdown-table-wrap/
 │       ├── actions.lua
+│       ├── cache.lua
 │       ├── context.lua
+│       ├── discovery.lua
 │       ├── events.lua
 │       ├── health.lua
 │       ├── init.lua
@@ -830,6 +865,9 @@ markdown-table-wrap.nvim/
 │   └── markdown-table-wrap.lua
 ├── stylua.toml
 └── tests/
+    ├── benchmark.lua
+    ├── fixtures/
+    │   └── gfm_tables.lua
     ├── README.md
     ├── helpers.lua
     ├── run.lua
@@ -851,6 +889,7 @@ markdown-table-wrap.nvim/
         ├── render_spec.lua
         ├── system_spec.lua
         ├── theme_spec.lua
+        ├── v04_spec.lua
         ├── width_spec.lua
         └── wrap_spec.lua
 ```

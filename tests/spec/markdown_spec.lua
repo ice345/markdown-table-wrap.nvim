@@ -84,6 +84,7 @@ h.test("markdown hard breaks", function()
   local markdown = require("markdown-table-wrap.markdown")
   h.assert_eq("br break", markdown.inline_to_text("a<br>b"), "a\nb")
   h.assert_eq("br slash break", markdown.inline_to_text("a<br/>b"), "a\nb")
+  h.assert_eq("br spaced case-insensitive break", markdown.inline_to_text("a<BR />b"), "a\nb")
 end)
 
 h.test("markdown extracts links from parsed cells", function()

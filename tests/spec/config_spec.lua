@@ -22,6 +22,8 @@ h.test("setup normalizes invalid configuration without breaking rendering", func
     themes = false,
     highlights = false,
     theme_dir = false,
+    discovery = { backend = "invalid" },
+    cache = false,
   })
 
   h.assert_eq("ratio is capped to window width", plugin.config.max_width_ratio, 1)
@@ -42,6 +44,8 @@ h.test("setup normalizes invalid configuration without breaking rendering", func
   h.assert_deep_eq("invalid themes are ignored", plugin.config.themes, {})
   h.assert_deep_eq("invalid highlights are ignored", plugin.config.highlights, {})
   h.assert_eq("invalid theme directory is ignored", plugin.config.theme_dir, nil)
+  h.assert_eq("invalid discovery backend uses auto", plugin.config.discovery.backend, "auto")
+  h.assert_true("invalid cache config restores defaults", plugin.config.cache.enabled)
 end)
 
 h.test("setup installs gx when Markdown filetype predates plugin loading", function()

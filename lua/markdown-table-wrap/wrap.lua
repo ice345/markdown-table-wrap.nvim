@@ -57,7 +57,13 @@ local function styled_chars(cell)
   for ch, start_col in iter_chars_with_pos(cell.text or "") do
     local span = span_kind_at(cell.spans, start_col)
     if type(span) == "table" then
-      table.insert(result, { text = ch, kind = span.kind, url = span.url })
+      table.insert(result, {
+        text = ch,
+        kind = span.kind,
+        url = span.url,
+        source_start_col = span.source_start_col,
+        source_end_col = span.source_end_col,
+      })
     else
       table.insert(result, { text = ch, kind = span })
     end
@@ -66,7 +72,14 @@ local function styled_chars(cell)
   local coalesced = {}
   for _, item in ipairs(result) do
     local last = coalesced[#coalesced]
-    if item.kind == "code" and last and last.kind == "code" then
+    if
+      item.kind == "code"
+      and last
+      and last.kind == "code"
+      and last.url == item.url
+      and last.source_start_col == item.source_start_col
+      and last.source_end_col == item.source_end_col
+    then
       last.text = last.text .. item.text
     else
       table.insert(coalesced, item)
@@ -83,6 +96,8 @@ local function line_from_chars(chars)
   local current_kind = nil
   local current_url = nil
   local current_start = nil
+  local current_source_start = nil
+  local current_source_end = nil
 
   local function close_span()
     if current_kind and current_kind ~= "text" and current_start and current_start < offset then
@@ -91,21 +106,32 @@ local function line_from_chars(chars)
         end_col = offset,
         kind = current_kind,
         url = current_url,
+        source_start_col = current_source_start,
+        source_end_col = current_source_end,
       })
     end
     current_kind = nil
     current_url = nil
     current_start = nil
+    current_source_start = nil
+    current_source_end = nil
   end
 
   for _, item in ipairs(chars) do
     table.insert(text, item.text)
 
-    if item.kind ~= current_kind or item.url ~= current_url then
+    if
+      item.kind ~= current_kind
+      or item.url ~= current_url
+      or item.source_start_col ~= current_source_start
+      or item.source_end_col ~= current_source_end
+    then
       close_span()
       current_kind = item.kind
       current_url = item.url
       current_start = offset
+      current_source_start = item.source_start_col
+      current_source_end = item.source_end_col
     end
 
     offset = offset + #item.text
@@ -142,6 +168,8 @@ local function expand_oversized_item(item, limit)
       text = ch,
       kind = item.kind,
       url = item.url,
+      source_start_col = item.source_start_col,
+      source_end_col = item.source_end_col,
     })
   end
 
@@ -182,7 +210,18 @@ end
 
 function M.wrap_cell(cell, limit)
   if limit <= 0 or width.strwidth(cell) == 0 then
-    return { { text = "", spans = {} } }
+    return {
+      {
+        text = "",
+        spans = {},
+        segment_index = 1,
+        source_span = type(cell) == "table" and cell.source_span or nil,
+        table_id = type(cell) == "table" and cell.table_id or nil,
+        row_index = type(cell) == "table" and cell.row_index or nil,
+        column_index = type(cell) == "table" and cell.column_index or nil,
+        present = type(cell) == "table" and cell.present or nil,
+      },
+    }
   end
 
   local lines = {}
@@ -201,6 +240,15 @@ function M.wrap_cell(cell, limit)
 
   if #lines == 0 then
     return { { text = "", spans = {} } }
+  end
+
+  for index, line in ipairs(lines) do
+    line.segment_index = index
+    line.source_span = cell.source_span
+    line.table_id = cell.table_id
+    line.row_index = cell.row_index
+    line.column_index = cell.column_index
+    line.present = cell.present
   end
 
   return lines

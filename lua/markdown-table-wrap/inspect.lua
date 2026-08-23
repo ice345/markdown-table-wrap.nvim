@@ -59,11 +59,23 @@ function M.format(context)
       tonumber(config.max_col_width) or 1
     ),
     string.format(
-      "Cache: changedtick=%d rendered=%s paused=%s auto=%s",
+      "Cache: changedtick=%d rendered=%s paused=%s auto=%s enabled=%s entries=%d hits=%d misses=%d tokens=%d",
       context.cache.changedtick,
       tostring(context.cache.rendered),
       tostring(context.cache.paused),
-      tostring(context.cache.auto_preview)
+      tostring(context.cache.auto_preview),
+      tostring(context.cache.enabled),
+      context.cache.entries or 0,
+      context.cache.hits or 0,
+      context.cache.misses or 0,
+      context.cache.token_entries or 0
+    ),
+    string.format(
+      "Discovery: requested=%s used=%s ranges=%d%s",
+      tostring((context.discovery or {}).requested or "auto"),
+      tostring((context.discovery or {}).used or "lua"),
+      tonumber((context.discovery or {}).range_count) or 0,
+      (context.discovery or {}).fallback_reason and (" (" .. context.discovery.fallback_reason .. ")") or ""
     ),
     string.format(
       "Options: preview=%s render_all=%s fit_to_window=%s inline=%s/%s",

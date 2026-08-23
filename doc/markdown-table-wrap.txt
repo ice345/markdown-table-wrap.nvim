@@ -58,6 +58,9 @@ Default interaction:
 - gx in Reader opens the original target under a rendered link. Away from a
   target it delegates to the Source mapping captured when Reader opened, or to
   native gx when available. Source-buffer gx is left untouched by default;
+  native buffer/window navigation dismisses Reader without pausing Source, so
+  returning to an auto-preview Source restores Reader. Explicit close/edit or
+  disable actions keep their persistent pause semantics.
   see |markdown-table-wrap-map-gx|.
 
 VIEW CHOICE                                  *markdown-table-wrap-view-choice*
@@ -313,8 +316,10 @@ Default setup:
       linebreak = false,
       breakindent = true,
       conceallevel = 2,
-      concealcursor = "nvc",
-    },
+    concealcursor = "nvc",
+  },
+  discovery = { backend = "auto" },
+  cache = { enabled = true },
     highlight_preset = "default",
     theme_dir = nil,
     themes = {},
@@ -426,6 +431,19 @@ auto_preview~
 render_all~
     Render all tables in the current Markdown buffer.
 
+discovery~
+    Select the table-range discovery backend: "auto", "lua", or
+    "treesitter". Auto currently uses the guaranteed Lua scanner. Explicit
+    Tree-sitter discovery falls back to Lua if a compatible parser or table
+    node is unavailable. The requested backend, selected backend, and fallback
+    reason are shown by |:MarkdownTableInspect|.
+
+cache~
+    cache.enabled defaults to true. Parsing is keyed by Source changedtick;
+    layout additionally uses window width and relevant configuration. Buffer
+    wipe releases every owned entry. See docs/performance.md in the repository
+    for the benchmark and reference resource budgets.
+
 highlight_preset~                  *markdown-table-wrap-highlight-preset*
     "default", "tokyonight", "catppuccin", "render_markdown", "auto", or a
     custom key supplied through |markdown-table-wrap-themes| or
@@ -528,6 +546,15 @@ get_state({bufnr})~                        *markdown-table-wrap.get_state()*
     Return a copied active context with mode, canonical Source, view/window,
     mapped cursor, table/cell, cache, and effective configuration. Return nil
     plus an error when the requested view is invalid.
+
+parser.parse_lines({lines}, {opts})~
+    Pure line-array API returning Source-spanned table, delimiter, row, cell,
+    and inline-token models. parser.parse_all({bufnr}, {opts}) is the thin
+    live-buffer adapter that adds Source identity and changedtick caching.
+
+discovery.status({bufnr}) / cache.inspect({bufnr})~
+    Return discovery backend/fallback and cache-stage diagnostics without
+    changing the active view.
 
 resolve_source_buffer({bufnr})~
                          *markdown-table-wrap.resolve_source_buffer()*
@@ -644,7 +671,8 @@ LIMITATIONS                                *markdown-table-wrap-limitations*
   concealed long source rows from leaking through below the rendered table on
   some terminal setups. Reader mode avoids this extmark/wrap interaction
   entirely.
-- Treesitter-aware table discovery is not implemented yet.
+- Tree-sitter discovery is optional and diagnostic. Auto intentionally keeps
+  the deterministic Lua scanner until measurements justify preferring it.
 - Container-prefixed tables nested inside blockquotes or lists are not
   implemented yet. Container starts safely terminate a top-level table.
 - The plugin focuses on Markdown pipe tables and does not replace general

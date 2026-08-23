@@ -9,8 +9,8 @@ rename its development branch as part of a release.
 - Repository: `ice345/markdown-table-wrap.nvim`
 - Remote: `origin` (`git@github.com:ice345/markdown-table-wrap.nvim.git`)
 - Development/release branch: `master`
-- Latest published tag before this release: `v0.2.3`
-- Next planned release: `v0.3.0`
+- Latest published tag before this release: `v0.3.0`
+- Next planned release: `v0.4.0`
 - Supported Neovim baseline: 0.10+
 
 Verify these values rather than assuming the local checkout is current:
@@ -28,38 +28,38 @@ up to date with `origin/master`.
 
 ## 1. Freeze The Release Scope
 
-Before preparing v0.3.0:
+Before preparing v0.4.0:
 
-1. Stop adding features not listed in the v0.3.0 CHANGELOG section.
+1. Stop adding features not listed in the v0.4.0 CHANGELOG section.
 2. Review every commit since the previous release:
 
    ```sh
-   git log --oneline v0.2.3..master
-   git diff --stat v0.2.3..master
+   git log --oneline v0.3.0..master
+   git diff --stat v0.3.0..master
    ```
 
 3. Confirm each user-visible change has a regression test or a documented
    manual check.
 4. Confirm the renderer still does not modify Markdown source text.
-5. Move unfinished work to [ROADMAP.md](ROADMAP.md); do not describe it as part
-   of the release.
+5. Move unfinished work to the maintainer-local `ROADMAP.md`; it is intentionally
+   ignored and is not part of the public plugin checkout.
 
 ## 2. Align Version And Documentation
 
-For v0.3.0, all of the following must agree:
+For v0.4.0, all of the following must agree:
 
 - `M.version` in `lua/markdown-table-wrap/init.lua`
 - The top release in `CHANGELOG.md`
 - README configuration/default behavior
 - `doc/markdown-table-wrap.txt`
-- The annotated Git tag `v0.3.0`
+- The annotated Git tag `v0.4.0`
 - The GitHub release title
 
 Search for stale version/default references:
 
 ```sh
 rg -n '0\.[0-9]+\.[0-9]+|map_gx|auto_open|your-name|ft = ' \
-  README.md CHANGELOG.md PUBLISHING.md ROADMAP.md doc lua tests
+  README.md CHANGELOG.md PUBLISHING.md doc lua tests
 ```
 
 Regenerate Vim help tags after help changes:
@@ -108,7 +108,7 @@ nvim --headless -u NONE \
 Open every relative link in README, CHANGELOG, PUBLISHING, and ROADMAP during
 release review, and confirm every referenced file exists in the checkout.
 
-## 4. Run The v0.3.0 Manual Matrix
+## 4. Run The v0.4.0 Manual Matrix
 
 Use a saved Markdown file with no table, one short table, one very wide table,
 several tables, links, escaped pipes, code spans, and mixed CJK/English text.
@@ -127,6 +127,12 @@ several tables, links, escaped pipes, code spans, and mixed CJK/English text.
   buffer refreshes itself rather than cancelling or rendering the other.
 - Wipe a rendered buffer and confirm reopening a document does not inherit stale
   viewport, timer, or view state.
+- Leave an automatically opened Reader through native buffer navigation, return
+  to its Source, and confirm Reader reopens. Explicit close/edit must still
+  report `paused=true` and remain in Source.
+- Run `tests/benchmark.lua`, compare all scenarios with
+  `docs/performance.md`, and inspect the selected discovery backend and cache
+  stages with `:MarkdownTableInspect`.
 
 ### Mappings And Links
 
@@ -221,32 +227,32 @@ git rev-parse origin/master
 
 The final two commit IDs must match and `git status --short` must be empty.
 
-## 6. Tag v0.3.0
+## 6. Tag v0.4.0
 
 Create an annotated tag on the verified `master` commit:
 
 ```sh
-git tag -a v0.3.0 -m "markdown-table-wrap.nvim v0.3.0"
-git show --stat v0.3.0
-git push origin v0.3.0
+git tag -a v0.4.0 -m "markdown-table-wrap.nvim v0.4.0"
+git show --stat v0.4.0
+git push origin v0.4.0
 ```
 
 Never move or reuse a published tag. If a release contains a defect, prepare a
-new patch release such as v0.3.1.
+new patch release such as v0.4.1.
 
 ## 7. Publish The GitHub Release
 
 Create a release from the existing tag:
 
 ```sh
-gh release create v0.3.0 \
-  --title "markdown-table-wrap.nvim v0.3.0" \
+gh release create v0.4.0 \
+  --title "markdown-table-wrap.nvim v0.4.0" \
   --notes-file /path/to/release-notes.md
 ```
 
-The notes should be derived from the v0.3.0 CHANGELOG entry. State explicitly
-that existing v0.2 setup remains compatible, v0.2.4 work was folded into this
-release, and no new Source mapping is enabled by default.
+The notes should be derived from the v0.4.0 CHANGELOG entry. State explicitly
+that the v0.3 mode/action contract remains compatible, Lua discovery remains
+the guaranteed path, and no new Source mapping is enabled by default.
 
 The real media currently tracked in this repository are:
 
@@ -270,7 +276,7 @@ After publishing:
    return {
      {
        "ice345/markdown-table-wrap.nvim",
-       version = "v0.3.0",
+       version = "v0.4.0",
        ft = { "markdown", "quarto", "rmd" },
        opts = {},
      },
@@ -279,32 +285,32 @@ After publishing:
 
 3. Run `:checkhealth markdown-table-wrap`.
 4. Open one table-free Markdown file and one file with a table.
-5. Confirm `require("markdown-table-wrap").version` reports `0.3.0`.
+5. Confirm `require("markdown-table-wrap").version` reports `0.4.0`.
 6. Confirm README and Vim help match the installed tag rather than unreleased
    `master` behavior.
 
-## v0.3.0 Release Notes Draft
+## v0.4.0 Release Notes Draft
 
-### markdown-table-wrap.nvim v0.3.0
+### markdown-table-wrap.nvim v0.4.0
 
-v0.3.0 makes Source, Inline, Reader, and Float operate as views of one
-canonical Markdown Source while preserving the stable wide-table renderer.
+v0.4.0 gives every table, row, cell, delimiter, and inline token an exact
+Source-backed identity, then uses that model for safer GFM parsing, optional
+discovery backends, and bounded refresh work.
 
 Highlights:
 
-- Reader `gx` safely falls back to the user's Source mapping, and normal buffer
-  exits preserve unsaved Source state.
-- Relative files, anchors, wiki links, URLs, images, split/tab opening, and
-  custom resolvers work through one Source-aware target model.
-- Configurable Reader/Float mappings, explicit passthrough, stable `<Plug>`
-  actions, context/events, Inspect, Help, statusline, and expanded health
-  diagnostics make every mode integratable and discoverable.
-- Multiple Reader windows for one Source keep independent geometry and refresh
-  from Source edits safely.
-- Oversized inline-code tokens split by display width so narrow tmux panes keep
-  table borders aligned.
-- The headless suite covers 123 parser, renderer, navigation, mapping, link,
-  lifecycle, multi-window, inspection, and compatibility cases.
+- Source-spanned table and token models survive normalization, wrapping,
+  resizing, refresh, and multiple links in one cell.
+- Reference links, balanced destinations, autolinks, nested inline semantics,
+  arbitrary code delimiters, and the classified GFM corpus improve correctness.
+- `auto`, `lua`, and optional `treesitter` discovery are inspectable and fail
+  safely; the deterministic Lua backend remains the default.
+- Parse/layout caches invalidate by changedtick and window/config signatures,
+  expose diagnostics, and release all entries on wipe.
+- Native buffer navigation no longer sets `paused=true`, so returning to an
+  auto-preview table Source restores Reader.
+- The headless suite covers 134 parser, renderer, metadata, discovery, cache,
+  navigation, mapping, link, lifecycle, and compatibility cases.
 
 Known scope:
 
@@ -317,8 +323,8 @@ Known scope:
 ## Future Releases
 
 For every later release, replace the previous/next version values in this guide,
-use the relevant milestone gate in [ROADMAP.md](ROADMAP.md), and repeat the same
-sequence:
+use the relevant milestone gate in the maintainer-local roadmap, and repeat the
+same sequence:
 
 1. Freeze scope.
 2. Align version, documentation, and tests.

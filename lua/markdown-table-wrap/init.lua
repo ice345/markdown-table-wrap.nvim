@@ -1,6 +1,6 @@
 local M = {}
 
-M.version = "0.3.0"
+M.version = "0.4.0"
 
 local defaults = {
   max_width_ratio = 0.9,
@@ -22,6 +22,12 @@ local defaults = {
   clear_on_insert = true,
   clear_on_visual = true,
   debounce_ms = 80,
+  discovery = {
+    backend = "auto",
+  },
+  cache = {
+    enabled = true,
+  },
   overlay_priority = 10000,
   overlay_fill = true,
   inline_virtual_text = "overlay",
@@ -216,6 +222,17 @@ local function validate_config()
   M.config.inline_disable_wrap = M.config.inline_disable_wrap ~= false
   M.config.inline_viewport_scrolling = M.config.inline_viewport_scrolling ~= false
   M.config.map_gx = M.config.map_gx == true
+
+  if type(M.config.discovery) ~= "table" then
+    M.config.discovery = vim.deepcopy(defaults.discovery)
+  end
+  if not vim.tbl_contains({ "auto", "lua", "treesitter" }, M.config.discovery.backend) then
+    M.config.discovery.backend = defaults.discovery.backend
+  end
+  if type(M.config.cache) ~= "table" then
+    M.config.cache = vim.deepcopy(defaults.cache)
+  end
+  M.config.cache.enabled = M.config.cache.enabled ~= false
 
   if type(M.config.mappings) ~= "table" then
     M.config.mappings = vim.deepcopy(defaults.mappings)
@@ -1063,6 +1080,8 @@ local function create_autocmds()
     callback = function(args)
       require("markdown-table-wrap.reader").cleanup(args.buf)
       require("markdown-table-wrap.inline").dispose(args.buf)
+      require("markdown-table-wrap.cache").clear_buffer(args.buf)
+      require("markdown-table-wrap.discovery").clear(args.buf)
       M.state.refresh_tokens[args.buf] = nil
       M.state.paused_buffers[args.buf] = nil
       M.state.auto_buffers[args.buf] = nil
@@ -1144,6 +1163,9 @@ function M.setup(opts)
 
   M.config = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts or {})
   validate_config()
+  require("markdown-table-wrap.cache").clear()
+  require("markdown-table-wrap.cache").configure(M.config.cache)
+  require("markdown-table-wrap.discovery").configure(M.config.discovery)
   M.state.refresh_epoch = M.state.refresh_epoch + 1
   M.state.refresh_tokens = {}
   M.state.paused_buffers = {}

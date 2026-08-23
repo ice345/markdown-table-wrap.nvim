@@ -42,7 +42,9 @@ function M.collect()
   local modules = {
     "markdown-table-wrap",
     "markdown-table-wrap.actions",
+    "markdown-table-wrap.cache",
     "markdown-table-wrap.context",
+    "markdown-table-wrap.discovery",
     "markdown-table-wrap.events",
     "markdown-table-wrap.inline",
     "markdown-table-wrap.inspect",
@@ -116,6 +118,19 @@ function M.collect()
   else
     add("ok", "Source gx proxy disabled; use :MarkdownTableOpen or a <Plug> mapping")
   end
+
+  local discovery = require("markdown-table-wrap.discovery").status(vim.api.nvim_get_current_buf())
+  add(
+    "ok",
+    string.format(
+      "Discovery backend: requested=%s used=%s%s",
+      discovery.requested,
+      discovery.used,
+      discovery.fallback_reason and (" (" .. discovery.fallback_reason .. ")") or ""
+    )
+  )
+  local cache = require("markdown-table-wrap.cache").inspect(vim.api.nvim_get_current_buf())
+  add("ok", string.format("Cache: enabled=%s entries=%d", tostring(cache.enabled), cache.entries))
 
   local render_markdown_loaded = package.loaded["render-markdown"] ~= nil
     or package.loaded["render-markdown.core"] ~= nil
