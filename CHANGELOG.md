@@ -2,6 +2,22 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
+## 0.5.1 - Reader Cell Text-Object Fixes
+
+### Fixed
+
+- Resolve `yic`, `dic`, and `vic` through Vim's operator-pending and Visual
+  text-object phases so real keyboard input is not shadowed by built-in
+  operators.
+- Keep `vic` selections aligned to each rendered segment's byte range, so CJK
+  text, wide link icons, and UTF-8 length differences cannot highlight or yank
+  a neighboring `│` border.
+- Make `vic` followed by `y` copy only the selected rendered logical cell and
+  restore any user-defined Visual-mode `y` mapping after the selection ends.
+- Add regression coverage for the CrossOver/Proton/Wine/Parallels-style table,
+  links, inline code, CJK wrapping, typed `yic`/`dic`/`vic`, and mapping
+  restoration.
+
 ## 0.5.0 - Table Workbench
 
 ### Added

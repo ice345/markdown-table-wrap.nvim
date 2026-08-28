@@ -9,7 +9,7 @@ rename its development branch as part of a release.
 - Repository: `ice345/markdown-table-wrap.nvim`
 - Remote: `origin` (`git@github.com:ice345/markdown-table-wrap.nvim.git`)
 - Development/release branch: `master`
-- Latest published tag: `v0.5.0`
+- Latest published tag: `v0.5.1`
 - Next planned release: `v0.6.0` (measured viewport/lazy materialization and
   compatibility follow-up; see the maintainer-local `ROADMAP.md`)
 - Supported Neovim baseline: 0.10+
@@ -25,7 +25,7 @@ git tag --sort=-version:refname | head
 ```
 
 The v0.4.0 section below is the retained release record and checklist example;
-the same gates apply to v0.5.0 and later releases. Substitute the target
+the same gates apply to v0.5.1 and later releases. Substitute the target
 version and milestone scope from the maintainer-local `ROADMAP.md`. Release
 only from `master`, with no unrelated local changes, after the branch is up to
 date with `origin/master`.
@@ -355,6 +355,34 @@ Verification for the release candidate:
 - The manual terminal/compositor matrix remains required for release review,
   especially narrow panes, CJK/code cells, third-party renderer coexistence,
   and Source popup editing.
+
+## v0.5.1 Release Notes Draft
+
+### markdown-table-wrap.nvim v0.5.1
+
+v0.5.1 is a focused Reader interaction patch for the Source-backed cell
+workbench introduced in v0.5.0.
+
+Highlights:
+
+- `yic`, `dic`, and `vic` now use Vim's real operator-pending/Visual
+  text-object phases instead of relying on conflicting complete Normal-mode
+  mappings.
+- CJK, wide icons, links, and inline code keep each `vic` overlay and yank
+  inside the selected logical cell; neighboring columns and `│` borders are
+  excluded.
+- Temporary Visual `y` handling restores an existing user mapping when the
+  selection ends or Reader is closed.
+
+Verification:
+
+- 168 headless regression tests pass on local Neovim 0.12.4, including the
+  provided CrossOver/Proton/Wine/Parallels-style CJK/link fixture.
+- The large Reader reference run remains 4,002 Source lines → 20,005 Reader
+  lines: approximately 1.45 s cold open, 0.315 s refresh, and 42 ms for 500
+  `gg`/`G` pairs on the development machine.
+- The supported Neovim 0.10.4/stable CI matrix and the manual terminal matrix
+  remain release gates.
 
 ## Future Releases
 
