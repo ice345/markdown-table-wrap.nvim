@@ -2,6 +2,7 @@
 :MarkdownTableDisableAutoPreview	markdown-table-wrap.txt	/*:MarkdownTableDisableAutoPreview*
 :MarkdownTableEditSource	markdown-table-wrap.txt	/*:MarkdownTableEditSource*
 :MarkdownTableEnableAutoPreview	markdown-table-wrap.txt	/*:MarkdownTableEnableAutoPreview*
+:MarkdownTableExport	markdown-table-wrap.txt	/*:MarkdownTableExport*
 :MarkdownTableFloatPreview	markdown-table-wrap.txt	/*:MarkdownTableFloatPreview*
 :MarkdownTableHelp	markdown-table-wrap.txt	/*:MarkdownTableHelp*
 :MarkdownTableInlinePreview	markdown-table-wrap.txt	/*:MarkdownTableInlinePreview*
@@ -28,6 +29,8 @@
 :MarkdownTableToggleInlineViewport	markdown-table-wrap.txt	/*:MarkdownTableToggleInlineViewport*
 :MarkdownTableTogglePreview	markdown-table-wrap.txt	/*:MarkdownTableTogglePreview*
 :MarkdownTableToggleReader	markdown-table-wrap.txt	/*:MarkdownTableToggleReader*
+:MarkdownTableYankCell	markdown-table-wrap.txt	/*:MarkdownTableYankCell*
+:MarkdownTableYankTable	markdown-table-wrap.txt	/*:MarkdownTableYankTable*
 markdown-table-wrap-api	markdown-table-wrap.txt	/*markdown-table-wrap-api*
 markdown-table-wrap-cell-change	markdown-table-wrap.txt	/*markdown-table-wrap-cell-change*
 markdown-table-wrap-cell-operations	markdown-table-wrap.txt	/*markdown-table-wrap-cell-operations*

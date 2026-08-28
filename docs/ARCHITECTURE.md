@@ -62,6 +62,7 @@ text or user intent.
 | `inline.lua` | Owns Source-buffer extmarks, inline replace/insert presentation, window wrap restoration, and optional viewport offsets |
 | `reader.lua` | Builds full-document Reader buffers, maps Reader lines/cells to Source, protects rendered tables from secondary Markdown parsing, and owns Reader lifecycle |
 | `cell_ops.lua` | Resolves the logical Reader cell, performs exact Source-span yank/mutation operations, enters Source Insert for changes, and installs configurable cell mappings/fallbacks |
+| `export.lua` | Resolves Source-backed cell/table identity, copies semantic rendered values, and serializes selected tables as TSV/CSV without Source mutation |
 | `context.lua` | Resolves any view to one mode-independent Source/table/cell/window context |
 | `actions.lua` | Dispatches mode-independent commands and safely leaves disposable views before buffer/window operations |
 | `links.lua` | Extracts/classifies targets, resolves paths relative to Source, opens targets, and supports custom resolution |
@@ -156,6 +157,25 @@ the register contents or Source selection semantics. In normal mode it adds no
 per-cell extmarks; only the currently selected Reader lines are overlaid, so
 large Readers retain the v0.4 one-authoritative-extmark-per-rendered-line
 baseline.
+
+## Rendered Copy And Export
+
+Copy and export intentionally have different semantics from `yic` and native
+Source yank:
+
+```text
+Source/Reader context → stable table/cell identity
+  ├─ rendered cell → semantic display text (no Markdown delimiters/icons)
+  ├─ rendered table → current layout lines, including borders
+  └─ TSV/CSV export → parsed fields with format-specific escaping
+```
+
+`export.lua` always resolves the canonical Source buffer first. Reader and
+Float may reuse their already-built rendered table, while Source and Inline
+render on demand with the active window configuration. Clipboard writes update
+the unnamed/yank registers (and `+` when enabled); no export path edits Source.
+TSV uses C-style escapes for control characters, and CSV doubles embedded
+quotes and quotes fields containing delimiters or line breaks.
 
 ## State Model
 

@@ -29,6 +29,7 @@ local specs = {
   "tests.spec.lifecycle_spec",
   "tests.spec.v04_spec",
   "tests.spec.cell_ops_spec",
+  "tests.spec.export_spec",
 }
 
 for _, spec in ipairs(specs) do

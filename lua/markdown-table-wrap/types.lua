@@ -94,6 +94,8 @@
 ---@field edit? MarkdownTableWrapMappingKey
 ---@field open_link? MarkdownTableWrapMappingKey
 ---@field help? MarkdownTableWrapMappingKey
+---@field copy_cell? MarkdownTableWrapMappingKey
+---@field copy_table? MarkdownTableWrapMappingKey
 ---@field insert? string[]
 ---@field passthrough? table<string, string|table>
 ---@field cell? MarkdownTableWrapCellMappings|false
@@ -127,5 +129,6 @@
 ---@field reader? table
 ---@field mappings? { reader?: MarkdownTableWrapReaderMappings|false, float?: MarkdownTableWrapFloatMappings|false }
 ---@field link? { resolver?: fun(target: MarkdownTableWrapTarget, context: MarkdownTableWrapContext, strategy: MarkdownTableWrapOpenStrategy): boolean|string|nil }
+---@field wide_table? table
 
 return {}

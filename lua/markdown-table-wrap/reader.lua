@@ -193,6 +193,14 @@ local function set_reader_keymaps(reader_bufnr)
     require("markdown-table-wrap.actions").run("help", { bufnr = reader_bufnr })
   end, "Show Markdown table reader help")
 
+  map(config.copy_cell, function()
+    require("markdown-table-wrap.export").cell({ bufnr = reader_bufnr })
+  end, "Copy rendered Markdown table cell")
+
+  map(config.copy_table, function()
+    require("markdown-table-wrap.export").table({ bufnr = reader_bufnr })
+  end, "Copy rendered Markdown table")
+
   require("markdown-table-wrap.cell_ops").install(function(lhs, callback, description)
     map(lhs, callback, description)
   end, reader_bufnr, state)

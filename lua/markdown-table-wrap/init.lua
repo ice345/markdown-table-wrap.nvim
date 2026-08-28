@@ -55,6 +55,8 @@ local defaults = {
       edit = "e",
       open_link = "gx",
       help = false,
+      copy_cell = false,
+      copy_table = false,
       insert = { "i", "a", "I", "A", "o", "O" },
       passthrough = {},
       cell = {
@@ -198,6 +200,24 @@ end
 ---@return boolean
 function M.action(name, opts)
   return require("markdown-table-wrap.actions").run(name, opts)
+end
+
+---@param opts? table
+---@return boolean, string?
+function M.copy_rendered_cell(opts)
+  return require("markdown-table-wrap.export").cell(opts)
+end
+
+---@param opts? table
+---@return boolean, string?
+function M.copy_rendered_table(opts)
+  return require("markdown-table-wrap.export").table(opts)
+end
+
+---@param opts? table
+---@return boolean, string?
+function M.export_table(opts)
+  return require("markdown-table-wrap.export").export(opts)
 end
 
 ---@param bufnr? integer
@@ -1173,6 +1193,10 @@ local function register_plug_mappings()
     ["<Plug>(MarkdownTableWrapTabSource)"] = "tab_source",
     ["<Plug>(MarkdownTableWrapInspect)"] = "inspect",
     ["<Plug>(MarkdownTableWrapHelp)"] = "help",
+    ["<Plug>(MarkdownTableWrapCopyCell)"] = "copy_cell",
+    ["<Plug>(MarkdownTableWrapCopyTable)"] = "copy_table",
+    ["<Plug>(MarkdownTableWrapExportTSV)"] = "export_tsv",
+    ["<Plug>(MarkdownTableWrapExportCSV)"] = "export_csv",
   }
 
   for lhs, action in pairs(plugs) do
@@ -1361,6 +1385,30 @@ function M.setup(opts)
   vim.api.nvim_create_user_command("MarkdownTableScrollBottom", function()
     M.scroll_view_to("bottom")
   end, { desc = "Scroll rendered Markdown table view to the bottom", force = true })
+
+  vim.api.nvim_create_user_command("MarkdownTableYankCell", function()
+    M.copy_rendered_cell()
+  end, { desc = "Copy the displayed Markdown table cell", force = true })
+
+  vim.api.nvim_create_user_command("MarkdownTableYankTable", function()
+    M.copy_rendered_table()
+  end, { desc = "Copy the rendered Markdown table", force = true })
+
+  vim.api.nvim_create_user_command("MarkdownTableExport", function(opts_cmd)
+    local format = vim.trim(opts_cmd.args or "")
+    if format == "" then
+      format = "tsv"
+    end
+    M.export_table({ format = format, all = opts_cmd.bang })
+  end, {
+    desc = "Export the current Markdown table as TSV or CSV",
+    bang = true,
+    nargs = "?",
+    complete = function()
+      return { "tsv", "csv" }
+    end,
+    force = true,
+  })
 
   if auto_preview_for(vim.api.nvim_get_current_buf()) and is_markdown_buffer() then
     M.schedule_refresh({

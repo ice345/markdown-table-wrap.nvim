@@ -228,6 +228,13 @@ The default interaction model is:
 - `v`, `V`, and `<C-v>` select real Reader lines. Yanked text is exactly the rendered content, and the view remains in Reader after copying.
 - Inside a rendered table cell, `yic` yanks the original Markdown cell source (for example, `[GitHub](https://github.com)`), `vic` selects the complete logical cell across wrapped lines, `dic` clears only that cell, `cic` clears it and enters Source Insert, and `cip` replaces it with the unnamed register. `dic`/`cic` put the removed source in the unnamed register like a normal Vim change/delete. These operations never rewrite the row's other cells or pipe delimiters. Cell changes are short Source hops and normally let Reader reopen after `InsertLeave`.
 - `c` has the same Source-cell change behavior when the cursor is inside a table cell. Outside a cell it safely delegates to the captured Source mapping or native Vim change command.
+- `:MarkdownTableYankCell` copies the semantic text currently displayed in a
+  cell (Markdown delimiters and decorative link icons are omitted), while
+  `yic` keeps copying the raw Source cell. `:MarkdownTableYankTable` copies
+  one complete rendered table including its borders.
+- `:MarkdownTableExport [tsv|csv]` exports the current table as structured
+  text; add `!` to export every table in the Source buffer. TSV uses C-style
+  escapes for tabs/newlines and CSV uses quote escaping.
 - Native `v`, `V`, and `<C-v>` remain native selections. Reader adds a visible `Visual` overlay so selection is still obvious on rendered table cells; it does not turn them into source-text selections.
 - `i`, `a`, `I`, `A`, `o`, and `O` switch to the mapped source line for editing. Reader reopens after `InsertLeave`.
 - `:w`, `:wq`, `:x`, and `ZZ` save the backing Markdown source directly. The rendered buffer itself is never written to disk; `:wq` then quits as usual.
@@ -382,6 +389,10 @@ inline and floating modes.
 - `:MarkdownTableScrollUp` scrolls the rendered table view up without moving through source rows.
 - `:MarkdownTableScrollTop` jumps the rendered table viewport to the top.
 - `:MarkdownTableScrollBottom` jumps the rendered table viewport to the bottom.
+- `:MarkdownTableYankCell` copies the displayed semantic cell under the cursor.
+- `:MarkdownTableYankTable` copies the complete rendered table under the cursor.
+- `:MarkdownTableExport[!] [tsv|csv]` copies the current table (or every table
+  with `!`) as TSV or CSV; the default format is TSV.
 
 Press `q` inside Reader to return to Source, or inside the floating preview window to close the float.
 
@@ -445,6 +456,8 @@ require("markdown-table-wrap").setup({
       edit = "e",
       open_link = "gx",
       help = false,
+      copy_cell = false,
+      copy_table = false,
       insert = { "i", "a", "I", "A", "o", "O" },
       passthrough = {},
     },
@@ -518,11 +531,19 @@ Options:
   Source-aware Reader cell mappings (`yic`, `vic`, `dic`, `cic`, `cip`, and
   `c`); set it to `false` or `{ enabled = false }` to disable them, or replace
   individual keys with your own mappings.
+  `mappings.reader.copy_cell` and `copy_table` optionally add local keys for
+  rendered semantic-cell and rendered-table copy; both default to `false`.
 - `link`: icon configuration plus an optional `resolver(target, context,
   strategy)` callback. Return `true`/`"noop"` when handled, `false` to cancel,
   or `"edit"`, `"split"`, `"vsplit"`, or `"tab"` to choose built-in file
   opening.
 - `extra_filetypes`: list of additional filetypes to enable table rendering for. The default is `{}`, meaning the built-in `markdown`, `md`, `quarto`, `rmd`, and `rmarkdown` filetypes render tables.
+
+Rendered copy and export are deliberately separate from Source copy. The
+rendered-cell action returns the semantic display value without table padding,
+Markdown delimiters, or decorative link icons. Rendered-table copy includes
+Unicode/ASCII borders. TSV/CSV export returns one field per parsed column and
+never mutates Source.
 
 Reader navigation example without replacing Source mappings globally:
 

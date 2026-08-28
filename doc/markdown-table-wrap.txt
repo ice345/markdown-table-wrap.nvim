@@ -327,6 +327,22 @@ COMMANDS                                      *markdown-table-wrap-commands*
 :MarkdownTableScrollBottom
     Jump the rendered table viewport to the bottom.
 
+                                                     *:MarkdownTableYankCell*
+:MarkdownTableYankCell
+    Copy the semantic text displayed by the cell under the cursor. Markdown
+    delimiters, padding, and decorative link icons are omitted; use yic for
+    the raw Source cell.
+
+                                                    *:MarkdownTableYankTable*
+:MarkdownTableYankTable
+    Copy one complete rendered table, including its borders and wrapped lines.
+
+                                                        *:MarkdownTableExport*
+:MarkdownTableExport[!] [tsv|csv]
+    Copy the current table as TSV (the default) or CSV. Add ! to export every
+    table in the Source buffer. TSV uses C-style escapes for tabs/newlines;
+    CSV doubles embedded quotes and quotes fields containing delimiters.
+
 ==============================================================================
 CONFIGURATION                              *markdown-table-wrap-configuration*
 
@@ -551,6 +567,10 @@ mappings~                              *markdown-table-wrap-mappings*
     value to false or { enabled = false } to disable all six mappings. A cell
     mutation is restricted to one physical Source line; register newlines are
     flattened to spaces so table row structure remains valid.
+
+    mappings.reader.copy_cell and copy_table optionally install local keys for
+    the semantic rendered-cell and complete rendered-table copy actions. Both
+    default to false, so no additional Reader key is consumed by default.
 >
       mappings = {
         reader = {
@@ -631,7 +651,8 @@ action({name}, {opts})~                       *markdown-table-wrap.action()*
     Run a stable mode-agnostic action. Common names are toggle_reader,
     toggle_inline, edit_source, close, refresh, open, open_split,
     open_vsplit, open_tab, next_buffer, previous_buffer, alternate_buffer,
-    split_source, vsplit_source, tab_source, inspect, and help.
+    split_source, vsplit_source, tab_source, inspect, help, copy_cell,
+    copy_table, export_tsv, and export_csv.
 
 statusline({bufnr})~                       *markdown-table-wrap.statusline()*
     Return a compact component such as "MTW Reader T3:C2", or an empty string
@@ -648,6 +669,8 @@ Stable normal-mode <Plug> mappings use the following names:
 - <Plug>(MarkdownTableWrapNextBuffer), PreviousBuffer, and AlternateBuffer
 - <Plug>(MarkdownTableWrapSplitSource), VSplitSource, and TabSource
 - <Plug>(MarkdownTableWrapInspect) and Help
+- <Plug>(MarkdownTableWrapCopyCell) and CopyTable
+- <Plug>(MarkdownTableWrapExportTSV) and ExportCSV
 
 The plugin emits User events MarkdownTableWrapReaderEnter,
 MarkdownTableWrapReaderLeave, MarkdownTableWrapViewChanged, and

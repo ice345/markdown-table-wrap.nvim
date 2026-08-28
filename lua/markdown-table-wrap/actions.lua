@@ -214,6 +214,26 @@ actions.help = function(context)
   return true
 end
 
+actions.copy_cell = function(context, opts)
+  opts = vim.tbl_extend("force", {}, opts or {}, { context = context })
+  return require("markdown-table-wrap.export").cell(opts)
+end
+
+actions.copy_table = function(context, opts)
+  opts = vim.tbl_extend("force", {}, opts or {}, { context = context })
+  return require("markdown-table-wrap.export").table(opts)
+end
+
+actions.export_tsv = function(context, opts)
+  opts = vim.tbl_extend("force", {}, opts or {}, { context = context, format = "tsv" })
+  return require("markdown-table-wrap.export").export(opts)
+end
+
+actions.export_csv = function(context, opts)
+  opts = vim.tbl_extend("force", {}, opts or {}, { context = context, format = "csv" })
+  return require("markdown-table-wrap.export").export(opts)
+end
+
 function M.run(name, opts)
   opts = opts or {}
   local action = actions[name]

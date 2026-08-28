@@ -14,6 +14,10 @@ All notable changes to `markdown-table-wrap.nvim` are documented here.
   fallback outside cells.
 - Keep native Reader `v`/`V`/`<C-v>` behavior while adding a higher-priority
   Visual overlay so selections remain visible on rendered table cells.
+- Add semantic rendered-cell and rendered-table copy actions plus
+  `:MarkdownTableExport[!] [tsv|csv]`. Rendered copy omits Markdown syntax and
+  decorative icons; TSV/CSV export keeps delimiters and quotes structurally
+  safe without mutating Source.
 
 ## 0.4.0 - Exact Metadata, GFM Correctness, And Performance
 
