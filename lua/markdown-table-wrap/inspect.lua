@@ -108,6 +108,9 @@ local function help_lines(context)
     "Common actions",
     "  :MarkdownTableEditSource       return to editable Source",
     "  :MarkdownTableOpen             open target under cursor",
+    "  :MarkdownTableYankCell         copy semantic rendered cell",
+    "  :MarkdownTableYankTable        copy complete rendered table",
+    "  :MarkdownTableExport [tsv|csv] export structured fields",
     "  :MarkdownTableRefresh          refresh the active view",
     "  :MarkdownTableInspect          show diagnostic context",
     "  :MarkdownTableClosePreview     close the rendered view",
@@ -122,6 +125,10 @@ local function help_lines(context)
     table.insert(lines, "  open target: " .. mapping_text(mappings.open_link))
     table.insert(lines, "  close view:  " .. mapping_text(mappings.close))
     table.insert(lines, "  help:        " .. mapping_text(mappings.help))
+    if context.mode == "reader" then
+      table.insert(lines, "  copy cell:   " .. mapping_text(mappings.copy_cell))
+      table.insert(lines, "  copy table:  " .. mapping_text(mappings.copy_table))
+    end
   end
   table.insert(lines, "")
   table.insert(lines, "Press q or <Esc> to close this help.")

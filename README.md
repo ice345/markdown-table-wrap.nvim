@@ -450,6 +450,7 @@ require("markdown-table-wrap").setup({
     breakindent = true,
     conceallevel = 2,
     concealcursor = "nvc",
+    sticky_header = false,
   },
   highlight_preset = "default",
   theme_dir = nil,
@@ -504,6 +505,10 @@ Options:
 - `row_separator`: draw horizontal separators between body rows for clearer cell grouping.
 - `preview_mode`: `"reader"` (default), `"inline"`, or `"float"` for `:MarkdownTablePreview`.
 - `reader`: behavior for the protected full-document reader. `reader.auto_open = "has_table"` opens it automatically only when a table is detected; use `"always"` to open it for every supported buffer. Reader windows enable `wrap` and `breakindent` while keeping `linebreak` disabled by default.
+- `reader.sticky_header`: when `true`, the current table's rendered header is
+  shown in the window `winbar` while the cursor is inside that table. It is a
+  visual aid only and never changes Reader buffer lines, search, or copied text;
+  the original `winbar` is restored outside the table and on exit.
 - `inline_mode`: `"replace"` or `"insert"`. Replace mode hides source text and overlays the rendered table in place.
 - `inline_position`: `"above"` or `"below"` for insert mode.
 - `dim_source`: dim the original Markdown table lines while insert mode is active.

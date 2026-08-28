@@ -23,6 +23,13 @@ local function source_name(source_bufnr)
   return vim.fn.fnamemodify(name, ":t")
 end
 
+local function cell_key(cell)
+  if type(cell) ~= "table" or not cell.table_id or cell.row_index == nil or cell.column_index == nil then
+    return nil
+  end
+  return table.concat({ cell.table_id, cell.row_index, cell.column_index }, ":")
+end
+
 local function build(source_bufnr, config)
   local source_lines = vim.api.nvim_buf_get_lines(source_bufnr, 0, -1, false)
   local tables = parser.parse_all(source_bufnr)
@@ -32,6 +39,8 @@ local function build(source_bufnr, config)
   local source_to_reader = {}
   local table_rows = {}
   local segments = {}
+  local cell_segments = {}
+  local table_headers = {}
   local table_index = 1
   local source_lnum = 1
 
@@ -42,6 +51,17 @@ local function build(source_bufnr, config)
     reader_to_source[reader_lnum] = mapped_lnum
     source_to_reader[mapped_lnum] = source_to_reader[mapped_lnum] or reader_lnum
     table_rows[reader_lnum] = is_table == true
+    for _, cell in ipairs(type(line_object) == "table" and line_object.cells or {}) do
+      local key = cell_key(cell)
+      if key then
+        cell_segments[key] = cell_segments[key] or {}
+        table.insert(cell_segments[key], { row = reader_lnum, cell = cell })
+        if line_object.is_header then
+          table_headers[cell.table_id] = table_headers[cell.table_id] or {}
+          table_headers[cell.table_id][reader_lnum] = line_object.text or ""
+        end
+      end
+    end
   end
 
   while source_lnum <= #source_lines do
@@ -51,7 +71,9 @@ local function build(source_bufnr, config)
       local reader_start = #output + 1
 
       for index, text in ipairs(rendered.lines) do
-        append(text, rendered.source_lnums[index] or table_info.start_lnum, rendered.line_objects[index], true)
+        local line_object = rendered.line_objects[index]
+        line_object.table_id = table_info.id
+        append(text, rendered.source_lnums[index] or table_info.start_lnum, line_object, true)
       end
 
       table.insert(segments, {
@@ -77,6 +99,8 @@ local function build(source_bufnr, config)
     source_to_reader = source_to_reader,
     table_rows = table_rows,
     segments = segments,
+    cell_segments = cell_segments,
+    table_headers = table_headers,
   }
 end
 
@@ -390,6 +414,7 @@ function M.open(source_bufnr, config)
     breakindent = vim.wo[winid].breakindent,
     conceallevel = vim.wo[winid].conceallevel,
     concealcursor = vim.wo[winid].concealcursor,
+    winbar = vim.wo[winid].winbar,
   }
   config = adjust_viewport_for_cursor(source_bufnr, config, source_cursor[1], source_cursor[2])
   local built = build(source_bufnr, config)
@@ -427,6 +452,7 @@ function M.open(source_bufnr, config)
   local reader_lnum = built.source_to_reader[source_cursor[1]] or 1
   local reader_line = built.lines[reader_lnum] or ""
   vim.api.nvim_win_set_cursor(winid, { reader_lnum, math.min(source_cursor[2], #reader_line) })
+  M.update_sticky_header(reader_bufnr, winid)
   local event_data = {
     mode = "reader",
     source_bufnr = source_bufnr,
@@ -575,6 +601,7 @@ function M.refresh(reader_bufnr)
   local reader_lnum = state.source_to_reader[source_lnum] or 1
   local line = state.lines[reader_lnum] or ""
   vim.api.nvim_win_set_cursor(winid, { reader_lnum, math.min(cursor[2], #line) })
+  M.update_sticky_header(reader_bufnr, winid)
   require("markdown-table-wrap.events").emit("MarkdownTableWrapRendered", {
     mode = "reader",
     source_bufnr = state.source_bufnr,
@@ -770,18 +797,31 @@ function M.cell_at_cursor(reader_bufnr, winid)
     return nil
   end
 
+  local key = cell_key(current)
+  local indexed = key and state.cell_segments and state.cell_segments[key] or nil
   local start_row
   local end_row
   local start_col = current.start_col
   local end_col = current.end_col
-  for row, object in ipairs(state.line_objects) do
-    if type(object) == "table" then
-      for _, cell in ipairs(object.cells or {}) do
-        if same_cell(cell, current) then
-          start_row = start_row and math.min(start_row, row) or row
-          end_row = end_row and math.max(end_row, row) or row
-          start_col = math.min(start_col, cell.start_col)
-          end_col = math.max(end_col, cell.end_col)
+  if indexed then
+    for _, item in ipairs(indexed) do
+      local row = item.row
+      local cell = item.cell
+      start_row = start_row and math.min(start_row, row) or row
+      end_row = end_row and math.max(end_row, row) or row
+      start_col = math.min(start_col, cell.start_col)
+      end_col = math.max(end_col, cell.end_col)
+    end
+  else
+    for row, object in ipairs(state.line_objects) do
+      if type(object) == "table" then
+        for _, cell in ipairs(object.cells or {}) do
+          if same_cell(cell, current) then
+            start_row = start_row and math.min(start_row, row) or row
+            end_row = end_row and math.max(end_row, row) or row
+            start_col = math.min(start_col, cell.start_col)
+            end_col = math.max(end_col, cell.end_col)
+          end
         end
       end
     end
@@ -841,6 +881,48 @@ function M.clear_visual_selection(reader_bufnr)
   if vim.api.nvim_buf_is_valid(reader_bufnr) then
     vim.api.nvim_buf_clear_namespace(reader_bufnr, visual_namespace, 0, -1)
   end
+end
+
+function M.update_sticky_header(reader_bufnr, winid)
+  reader_bufnr = normalize_bufnr(reader_bufnr)
+  local state = states[reader_bufnr]
+  if not state then
+    return false
+  end
+  winid = winid or state.winid
+  if not winid or not vim.api.nvim_win_is_valid(winid) or vim.api.nvim_win_get_buf(winid) ~= reader_bufnr then
+    return false
+  end
+  if not (state.config.reader or {}).sticky_header then
+    vim.wo[winid].winbar = state.source_options and state.source_options.winbar or ""
+    return false
+  end
+
+  local cursor = vim.api.nvim_win_get_cursor(winid)
+  local line_object = state.line_objects[cursor[1]]
+  local table_id = type(line_object) == "table" and line_object.table_id or nil
+  if not table_id then
+    for _, segment in ipairs(state.segments or {}) do
+      if cursor[1] >= segment.start_row + 1 and cursor[1] <= segment.start_row + segment.rendered.height then
+        table_id = segment.rendered.table_id
+        break
+      end
+    end
+  end
+  local headers = table_id and state.table_headers and state.table_headers[table_id] or nil
+  if not headers then
+    vim.wo[winid].winbar = state.source_options and state.source_options.winbar or ""
+    return false
+  end
+  local values = {}
+  local header_rows = vim.tbl_keys(headers)
+  table.sort(header_rows)
+  for _, row in ipairs(header_rows) do
+    table.insert(values, headers[row])
+  end
+  local text = table.concat(values, " / "):gsub("%%", "%%%%")
+  vim.wo[winid].winbar = text ~= "" and (" " .. text) or ""
+  return text ~= ""
 end
 
 local function visual_bounds(reader_bufnr, winid)

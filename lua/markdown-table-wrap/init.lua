@@ -50,6 +50,7 @@ local defaults = {
     breakindent = true,
     conceallevel = 2,
     concealcursor = "nvc",
+    sticky_header = false,
   },
   highlight_preset = "default",
   theme_dir = nil,
@@ -349,6 +350,7 @@ local function validate_config()
   if type(M.config.reader.concealcursor) ~= "string" or M.config.reader.concealcursor:match("^[nvic]*$") == nil then
     M.config.reader.concealcursor = defaults.reader.concealcursor
   end
+  M.config.reader.sticky_header = M.config.reader.sticky_header == true
 
   if type(M.config.wide_table) ~= "table" then
     M.config.wide_table = vim.deepcopy(defaults.wide_table)
@@ -1107,6 +1109,7 @@ local function create_autocmds()
       local reader = require("markdown-table-wrap.reader")
       if reader.is_reader(args.buf) then
         reader.update_visual_selection(args.buf)
+        reader.update_sticky_header(args.buf)
         return
       end
       if not is_markdown_buffer(args.buf) then
@@ -1180,6 +1183,7 @@ local function create_autocmds()
       local reader = require("markdown-table-wrap.reader")
       if reader.is_reader(bufnr) then
         reader.update_visual_selection(bufnr)
+        reader.update_sticky_header(bufnr)
         return
       end
       if not is_markdown_buffer(bufnr) or config_for_buffer(bufnr).clear_on_visual == false then

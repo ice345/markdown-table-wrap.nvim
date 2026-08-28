@@ -21,6 +21,8 @@ All notable changes to `markdown-table-wrap.nvim` are documented here.
 - Add opt-in `wide_table` column policies with fixed/min/max/weight/priority
   rules, deterministic overflow metadata, and a marker-based horizontal column
   viewport with left/right commands.
+- Add optional Reader sticky headers and an indexed logical-cell map so cursor
+  updates remain bounded for large rendered documents.
 
 ## 0.4.0 - Exact Metadata, GFM Correctness, And Performance
 

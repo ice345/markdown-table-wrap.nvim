@@ -187,7 +187,9 @@ There are several intentionally separate state layers:
 - `reader.lua`: Reader-buffer states and shared Source ownership. One Source may
   have multiple width-specific Reader windows; each state records the Source
   changedtick used to build its projection so cell actions can reject stale
-  metadata safely.
+  metadata safely. Logical cell segments and header lines are indexed during
+  build, so cell actions and optional sticky-header updates do not scan the
+  complete rendered document on every cursor move.
 - `inline.lua`: active Source buffers/tables/configs, per-window saved wrap
   options, and viewport offsets.
 - `cache.lua` / `discovery.lua`: derived data and diagnostics keyed by Source.
@@ -271,6 +273,11 @@ become roughly 20,000 Reader lines after wrapping. Reader currently
 materializes every line and line-object before opening and refreshes the whole
 scratch buffer. One authoritative overlay extmark is installed per rendered
 table line.
+
+Optional sticky headers use only the Reader window's `winbar`; they never add
+buffer lines or overlay extmarks. The previous window `winbar` is part of the
+Reader transition snapshot and is restored when the cursor leaves a table or
+the Reader closes.
 
 Once built, `gg` and `G` are native buffer movements and do not trigger table
 parsing. Initial build, full refresh, terminal redraw, and third-party Markdown

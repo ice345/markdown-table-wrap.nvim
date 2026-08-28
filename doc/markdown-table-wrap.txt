@@ -388,7 +388,8 @@ Default setup:
       linebreak = false,
       breakindent = true,
       conceallevel = 2,
-    concealcursor = "nvc",
+      concealcursor = "nvc",
+      sticky_header = false,
   },
   discovery = { backend = "auto" },
   cache = { enabled = true },
@@ -472,6 +473,12 @@ reader~
     By default ordinary Markdown in Reader uses wrap and breakindent, while
     linebreak remains disabled. Table rows are already wrapped by the plugin
     and stay inside the computed text width.
+
+    reader.sticky_header defaults to false. When enabled, the current table's
+    rendered header is shown in the window winbar while the cursor is inside
+    that table. This is visual-only; Reader lines, search, yank, and copied
+    text are unchanged, and the previous winbar is restored outside the table
+    and when Reader closes.
 
 inline_mode~
     "replace" hides source text and overlays rendered rows.
