@@ -69,6 +69,11 @@ local function raw_cell(cell)
   return cell and cell.present ~= false and (cell.raw or cell.text or "") or ""
 end
 
+local function single_line(value)
+  local text = tostring(value or "")
+  return (text:gsub("[\r\n]+", " "))
+end
+
 local function rows_from(table_info)
   local rows = { {} }
   for index, cell in ipairs(table_info.header) do
@@ -147,7 +152,12 @@ local function replace_table(context, table_info, rows, alignments, opts)
     return false
   end
   local lines = canonical_lines(table_info, rows, alignments)
-  vim.api.nvim_buf_set_lines(source_bufnr, table_info.start_lnum - 1, table_info.end_lnum, false, lines)
+  local ok, err =
+    pcall(vim.api.nvim_buf_set_lines, source_bufnr, table_info.start_lnum - 1, table_info.end_lnum, false, lines)
+  if not ok then
+    notify("could not rewrite the Markdown table: " .. tostring(err), vim.log.levels.ERROR, opts)
+    return false
+  end
   local target_lnum = math.max(table_info.start_lnum, math.min(table_info.end_lnum, context.cursor.source_lnum))
   if vim.api.nvim_get_current_buf() == source_bufnr then
     vim.api.nvim_win_set_cursor(0, { math.min(target_lnum, vim.api.nvim_buf_line_count(source_bufnr)), 0 })
@@ -197,9 +207,10 @@ function M.add_row(opts)
   local values = type(opts and opts.values) == "table" and opts.values or {}
   local row = {}
   for index = 1, #table_info.header do
-    row[index] = tostring(values[index] or "")
+    row[index] = single_line(values[index])
   end
-  local position = tonumber(opts and opts.index) or (#table_info.rows + 1)
+  local position = tonumber(opts and opts.index)
+    or ((context.cell and context.cell.row_index or 0) > 0 and context.cell.row_index + 1 or #table_info.rows + 1)
   position = math.max(1, math.min(#table_info.rows + 1, math.floor(position)))
   table.insert(rows, position + 1, row)
   local ok = replace_table(context, table_info, rows, vim.deepcopy(table_info.align), opts)
@@ -243,7 +254,7 @@ function M.add_column(opts)
   if not context then
     return false
   end
-  local position = tonumber(opts and opts.index) or (#table_info.header + 1)
+  local position = tonumber(opts and opts.index) or ((context.cell and context.cell.index or #table_info.header) + 1)
   position = math.max(1, math.min(#table_info.header + 1, math.floor(position)))
   for _, row in ipairs(rows) do
     table.insert(row, position, "")
