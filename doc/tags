@@ -29,6 +29,8 @@
 :MarkdownTableToggleInlineViewport	markdown-table-wrap.txt	/*:MarkdownTableToggleInlineViewport*
 :MarkdownTableTogglePreview	markdown-table-wrap.txt	/*:MarkdownTableTogglePreview*
 :MarkdownTableToggleReader	markdown-table-wrap.txt	/*:MarkdownTableToggleReader*
+:MarkdownTableViewportLeft	markdown-table-wrap.txt	/*:MarkdownTableViewportLeft*
+:MarkdownTableViewportRight	markdown-table-wrap.txt	/*:MarkdownTableViewportRight*
 :MarkdownTableYankCell	markdown-table-wrap.txt	/*:MarkdownTableYankCell*
 :MarkdownTableYankTable	markdown-table-wrap.txt	/*:MarkdownTableYankTable*
 markdown-table-wrap-api	markdown-table-wrap.txt	/*markdown-table-wrap-api*
@@ -54,6 +56,7 @@ markdown-table-wrap-theme-dir	markdown-table-wrap.txt	/*markdown-table-wrap-them
 markdown-table-wrap-themes	markdown-table-wrap.txt	/*markdown-table-wrap-themes*
 markdown-table-wrap-vic	markdown-table-wrap.txt	/*markdown-table-wrap-vic*
 markdown-table-wrap-view-choice	markdown-table-wrap.txt	/*markdown-table-wrap-view-choice*
+markdown-table-wrap-wide-table	markdown-table-wrap.txt	/*markdown-table-wrap-wide-table*
 markdown-table-wrap-yic	markdown-table-wrap.txt	/*markdown-table-wrap-yic*
 markdown-table-wrap.action()	markdown-table-wrap.txt	/*markdown-table-wrap.action()*
 markdown-table-wrap.get_buffer_config()	markdown-table-wrap.txt	/*markdown-table-wrap.get_buffer_config()*

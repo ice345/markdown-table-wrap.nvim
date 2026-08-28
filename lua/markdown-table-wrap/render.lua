@@ -286,11 +286,15 @@ local function natural_widths(table_info, config)
   return widths
 end
 
-local function table_width(col_widths)
+local function table_width(col_widths, markers)
   local total = 1
   for _, col_width in ipairs(col_widths) do
     total = total + col_width + 3
   end
+  markers = markers or {}
+  total = total
+    + (markers.left and width.strwidth(markers.value or "") or 0)
+    + (markers.right and width.strwidth(markers.value or "") or 0)
   return total
 end
 
@@ -308,6 +312,12 @@ local function text_area_width()
   return math.max(1, vim.api.nvim_win_get_width(winid) - (info.textoff or 0))
 end
 
+local function column_rule(config, index)
+  local columns = (((config or {}).wide_table or {}).columns or {})
+  local rule = columns[index]
+  return type(rule) == "table" and rule or {}
+end
+
 local function distribute_widths(table_info, config)
   local columns = #table_info.header
   local available = math.max(20, math.floor(text_area_width() * config.max_width_ratio))
@@ -319,43 +329,189 @@ local function distribute_widths(table_info, config)
   else
     content_budget = math.max(columns * effective_min, content_budget)
   end
-  local widths = natural_widths(table_info, config)
+  local natural = natural_widths(table_info, config)
+  local widths = {}
+  local minimums = {}
+  local fixed = {}
 
   for index = 1, columns do
-    widths[index] = math.max(effective_min, math.min(widths[index], config.max_col_width))
+    local rule = column_rule(config, index)
+    local minimum = math.max(effective_min, tonumber(rule.min) or effective_min)
+    local maximum = math.max(minimum, tonumber(rule.max) or config.max_col_width)
+    minimums[index] = minimum
+    if rule.width ~= nil then
+      widths[index] = math.max(1, math.min(maximum, tonumber(rule.width) or minimum))
+      fixed[index] = true
+    else
+      widths[index] = math.max(minimum, math.min(natural[index], maximum))
+    end
   end
 
-  while sum(widths) > content_budget do
-    local widest_index = 1
-    for index = 2, columns do
-      if widths[index] > widths[widest_index] then
-        widest_index = index
+  local function candidate(ignore_minimum)
+    local best
+    for index = 1, columns do
+      local rule = column_rule(config, index)
+      local floor = ignore_minimum and 1 or minimums[index]
+      if not fixed[index] and widths[index] > floor then
+        local priority = tonumber(rule.priority) or 0
+        local weight = math.max(0.01, tonumber(rule.weight) or 1)
+        local score = (widths[index] - floor) / weight
+        if
+          not best
+          or priority < best.priority
+          or (priority == best.priority and score > best.score)
+          or (priority == best.priority and score == best.score and index < best.index)
+        then
+          best = { index = index, priority = priority, score = score }
+        end
       end
     end
-
-    if widths[widest_index] <= effective_min then
-      break
-    end
-
-    widths[widest_index] = widths[widest_index] - 1
+    return best
   end
 
-  return widths
+  local function shrink(ignore_minimum)
+    local target = candidate(ignore_minimum)
+    if not target then
+      return false
+    end
+    widths[target.index] = widths[target.index] - 1
+    return true
+  end
+
+  local overflow = false
+  while sum(widths) > content_budget and shrink(false) do
+    -- Keep explicit minimums whenever the requested layout permits it.
+  end
+  while sum(widths) > content_budget and shrink(true) do
+    -- If constraints are impossible, deterministic best-effort fitting may
+    -- go below a preferred minimum, but never below one display column.
+  end
+  if sum(widths) > content_budget then
+    overflow = true
+  end
+
+  local wide = config.wide_table or {}
+  if wide.allocate_extra == true and sum(widths) < content_budget then
+    local spare = content_budget - sum(widths)
+    while spare > 0 do
+      local best
+      for index = 1, columns do
+        local rule = column_rule(config, index)
+        local maximum = math.max(minimums[index], tonumber(rule.max) or config.max_col_width)
+        if not fixed[index] and widths[index] < maximum then
+          local weight = tonumber(rule.weight) or 1
+          if not best or weight > best.weight or (weight == best.weight and index < best.index) then
+            best = { index = index, weight = weight }
+          end
+        end
+      end
+      if not best then
+        break
+      end
+      widths[best.index] = widths[best.index] + 1
+      spare = spare - 1
+    end
+  end
+
+  return widths,
+    {
+      available = available,
+      content_budget = content_budget,
+      natural_widths = natural,
+      minimum_widths = minimums,
+      fixed = fixed,
+      overflow = overflow,
+    }
 end
 
-local function border_line(chars, left, join, right, widths)
-  local parts = { left }
+local function border_line(chars, left, join, right, widths, markers)
+  markers = markers or {}
+  local parts = { markers.left and (markers.value or "…") or "", left }
 
   for index, col_width in ipairs(widths) do
     table.insert(parts, width.repeat_char(chars.horizontal, col_width + 2))
     table.insert(parts, index == #widths and right or join)
   end
 
+  table.insert(parts, markers.right and (markers.value or "…") or "")
   return line_object(table.concat(parts))
 end
 
-local function row_separator_line(chars, widths)
-  return border_line(chars, chars.mid_left, chars.mid_join, chars.mid_right, widths)
+local function row_separator_line(chars, widths, markers)
+  return border_line(chars, chars.mid_left, chars.mid_join, chars.mid_right, widths, markers)
+end
+
+local function visible_columns(total, widths, config)
+  local all = {}
+  for index = 1, total do
+    all[index] = index
+  end
+  local wide = config.wide_table or {}
+  if wide.mode ~= "viewport" then
+    return all, { left = false, right = false, value = "" }
+  end
+
+  local viewport = wide.viewport or {}
+  local start = math.max(1, math.floor(tonumber(viewport.start_column) or 1))
+  start = math.min(start, total)
+  local count = tonumber(viewport.column_count)
+  if count then
+    count = math.max(1, math.floor(count))
+  else
+    local available = math.max(1, math.floor(text_area_width() * (config.max_width_ratio or 1)))
+    local budget = math.max(1, available - 3)
+    count = 0
+    local used = 0
+    for index = start, total do
+      local cost = widths[index] + 3
+      if count > 0 and used + cost > budget then
+        break
+      end
+      used = used + cost
+      count = count + 1
+    end
+    count = math.max(1, count)
+  end
+
+  local finish = math.min(total, start + count - 1)
+  local selected = {}
+  for index = start, finish do
+    table.insert(selected, index)
+  end
+  return selected,
+    {
+      left = start > 1,
+      right = finish < total,
+      value = type(viewport.marker) == "string" and viewport.marker ~= "" and viewport.marker or "…",
+    }
+end
+
+function M.ensure_viewport(config, total_columns, active_column)
+  config = config or {}
+  local wide = config.wide_table or {}
+  if wide.mode ~= "viewport" or type(wide.viewport) ~= "table" then
+    return config
+  end
+  active_column = tonumber(active_column)
+  if not active_column or active_column < 1 then
+    return config
+  end
+  active_column = math.min(total_columns, math.floor(active_column))
+  local viewport = wide.viewport
+  local count = tonumber(viewport.column_count)
+  if count then
+    count = math.max(1, math.floor(count))
+    local start = math.max(1, math.floor(tonumber(viewport.start_column) or 1))
+    if active_column < start then
+      start = active_column
+    elseif active_column >= start + count then
+      start = active_column - count + 1
+    end
+    viewport.start_column = math.max(1, math.min(start, math.max(1, total_columns - count + 1)))
+  else
+    viewport.start_column = math.max(1, math.min(active_column, total_columns))
+  end
+  return config
 end
 
 local function add_cell_chunks(chunks, cell_line, offset, cell_index)
@@ -376,44 +532,49 @@ local function add_cell_chunks(chunks, cell_line, offset, cell_index)
   end
 end
 
-local function render_row(row, col_widths, align, chars, config)
+local function render_row(row, col_widths, align, chars, config, columns, markers)
   local wrapped = {}
   local height = 1
 
-  for col, col_width in ipairs(col_widths) do
-    wrapped[col] = wrap.wrap_cell(markdown.apply_link_icons(row[col] or "", config), col_width)
-    height = math.max(height, #wrapped[col])
+  columns = columns or vim.tbl_map(function(_, index)
+    return index
+  end, col_widths)
+  for visible_col, col_width in ipairs(col_widths) do
+    local source_col = columns[visible_col] or visible_col
+    wrapped[visible_col] = wrap.wrap_cell(markdown.apply_link_icons(row[source_col] or "", config), col_width)
+    height = math.max(height, #wrapped[visible_col])
   end
 
   local lines = {}
   for line_index = 1, height do
-    local parts = { chars.vertical }
+    local parts = { markers and markers.left and (markers.value or "…") or "", chars.vertical }
     local chunks = {}
     local cells = {}
-    local offset = #chars.vertical
+    local offset = (markers and markers.left and #(markers.value or "…") or 0) + #chars.vertical
 
-    for col, col_width in ipairs(col_widths) do
-      local cell = wrapped[col][line_index] or { text = "", spans = {} }
+    for visible_col, col_width in ipairs(col_widths) do
+      local source_col = columns[visible_col] or visible_col
+      local cell = wrapped[visible_col][line_index] or { text = "", spans = {} }
       local cell_text = cell.text or ""
-      local padded = width.pad(cell_text, col_width, align[col])
+      local padded = width.pad(cell_text, col_width, align[source_col])
       local content_offset = 1
-      if align[col] == "right" then
+      if align[source_col] == "right" then
         content_offset = 1 + math.max(0, col_width - width.strwidth(cell_text))
-      elseif align[col] == "center" then
+      elseif align[source_col] == "center" then
         content_offset = 1 + math.floor(math.max(0, col_width - width.strwidth(cell_text)) / 2)
       end
 
       table.insert(parts, " " .. padded .. " ")
-      add_cell_chunks(chunks, cell, offset + content_offset, col)
+      add_cell_chunks(chunks, cell, offset + content_offset, source_col)
       table.insert(cells, {
-        index = col,
+        index = source_col,
         start_col = offset,
         end_col = offset + #(" " .. padded .. " "),
         text = cell_text,
         segment_index = cell.segment_index or line_index,
         table_id = cell.table_id,
         row_index = cell.row_index,
-        column_index = cell.column_index or col,
+        column_index = cell.column_index or source_col,
         source_span = cell.source_span,
         present = cell.present,
       })
@@ -422,6 +583,9 @@ local function render_row(row, col_widths, align, chars, config)
       offset = offset + #chars.vertical
     end
 
+    if markers and markers.right then
+      table.insert(parts, markers.value or "…")
+    end
     table.insert(lines, line_object(table.concat(parts), chunks, cells))
   end
 
@@ -429,6 +593,7 @@ local function render_row(row, col_widths, align, chars, config)
 end
 
 function M.render_table(table_info, config)
+  config = config or {}
   local layout_key = table.concat({
     tostring(table_info.id or table_info.start_lnum),
     tostring(text_area_width()),
@@ -439,6 +604,7 @@ function M.render_table(table_info, config)
     tostring(config.use_unicode_border),
     tostring(config.table_border),
     tostring(config.row_separator),
+    vim.inspect(config.wide_table or {}),
     vim.inspect(config.link or {}),
   }, "\31")
   local cache = require("markdown-table-wrap.cache")
@@ -450,7 +616,12 @@ function M.render_table(table_info, config)
   end
 
   local chars = border_chars(config)
-  local col_widths = distribute_widths(table_info, config)
+  local all_widths, layout = distribute_widths(table_info, config)
+  local columns, markers = visible_columns(#all_widths, all_widths, config)
+  local col_widths = {}
+  for _, source_col in ipairs(columns) do
+    table.insert(col_widths, all_widths[source_col])
+  end
   local lines = {}
   local source_lnums = {}
 
@@ -459,39 +630,58 @@ function M.render_table(table_info, config)
     table.insert(source_lnums, source_lnum)
   end
 
-  append(border_line(chars, chars.top_left, chars.top_join, chars.top_right, col_widths), table_info.start_lnum)
+  append(
+    border_line(chars, chars.top_left, chars.top_join, chars.top_right, col_widths, markers),
+    table_info.start_lnum
+  )
 
-  for _, line in ipairs(render_row(table_info.header, col_widths, table_info.align, chars, config)) do
+  for _, line in ipairs(render_row(table_info.header, col_widths, table_info.align, chars, config, columns, markers)) do
     line.is_header = true
     append(line, table_info.start_lnum)
   end
 
-  append(border_line(chars, chars.mid_left, chars.mid_join, chars.mid_right, col_widths), table_info.separator_lnum)
+  append(
+    border_line(chars, chars.mid_left, chars.mid_join, chars.mid_right, col_widths, markers),
+    table_info.separator_lnum
+  )
 
   for row_index, row in ipairs(table_info.rows) do
     local source_lnum = table_info.separator_lnum + row_index
-    for _, line in ipairs(render_row(row, col_widths, table_info.align, chars, config)) do
+    for _, line in ipairs(render_row(row, col_widths, table_info.align, chars, config, columns, markers)) do
       append(line, source_lnum)
     end
 
     if config.row_separator and row_index < #table_info.rows then
-      append(row_separator_line(chars, col_widths), source_lnum)
+      append(row_separator_line(chars, col_widths, markers), source_lnum)
     end
   end
 
-  append(border_line(chars, chars.bottom_left, chars.bottom_join, chars.bottom_right, col_widths), table_info.end_lnum)
+  append(
+    border_line(chars, chars.bottom_left, chars.bottom_join, chars.bottom_right, col_widths, markers),
+    table_info.end_lnum
+  )
 
   local rendered = {
     lines = vim.tbl_map(text_of, lines),
     line_objects = lines,
     source_lnums = source_lnums,
-    width = table_width(col_widths),
+    width = table_width(col_widths, markers),
     height = #lines,
     start_lnum = table_info.start_lnum,
     end_lnum = table_info.end_lnum,
     table_id = table_info.id,
     source_span = table_info.source_span,
     columns = #table_info.header,
+    visible_columns = vim.deepcopy(columns),
+    hidden_columns = { left = markers.left, right = markers.right },
+    column_widths = vim.deepcopy(all_widths),
+    layout = layout,
+    viewport = {
+      mode = (config.wide_table or {}).mode or "wrap",
+      start_column = columns[1],
+      end_column = columns[#columns],
+      marker = markers.value,
+    },
   }
   if table_info.source_bufnr then
     cache.set(

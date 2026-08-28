@@ -24,6 +24,11 @@ h.test("setup normalizes invalid configuration without breaking rendering", func
     theme_dir = false,
     discovery = { backend = "invalid" },
     cache = false,
+    wide_table = {
+      mode = "invalid",
+      viewport = { start_column = 0, column_count = 0, marker = "" },
+      columns = { bad = "rule", [1] = { min = 9, max = 2, width = 0, weight = -1, priority = -2 } },
+    },
   })
 
   h.assert_eq("ratio is capped to window width", plugin.config.max_width_ratio, 1)
@@ -46,6 +51,15 @@ h.test("setup normalizes invalid configuration without breaking rendering", func
   h.assert_eq("invalid theme directory is ignored", plugin.config.theme_dir, nil)
   h.assert_eq("invalid discovery backend uses auto", plugin.config.discovery.backend, "auto")
   h.assert_true("invalid cache config restores defaults", plugin.config.cache.enabled)
+  h.assert_eq("invalid wide-table mode falls back", plugin.config.wide_table.mode, "wrap")
+  h.assert_eq("wide-table viewport start is positive", plugin.config.wide_table.viewport.start_column, 1)
+  h.assert_eq("wide-table viewport count is positive", plugin.config.wide_table.viewport.column_count, 1)
+  h.assert_eq("wide-table marker is restored", plugin.config.wide_table.viewport.marker, "…")
+  h.assert_eq("wide-table column minimum is retained", plugin.config.wide_table.columns[1].min, 9)
+  h.assert_eq("wide-table maximum follows minimum", plugin.config.wide_table.columns[1].max, 9)
+  h.assert_eq("wide-table fixed width is positive", plugin.config.wide_table.columns[1].width, 1)
+  h.assert_eq("wide-table weight is non-negative", plugin.config.wide_table.columns[1].weight, 0)
+  h.assert_eq("wide-table priority is non-negative", plugin.config.wide_table.columns[1].priority, 0)
 end)
 
 h.test("setup installs gx when Markdown filetype predates plugin loading", function()
@@ -148,6 +162,11 @@ h.test("all documented commands exist after setup", function()
     "MarkdownTableHelp",
     "MarkdownTableScrollDown",
     "MarkdownTableScrollUp",
+    "MarkdownTableViewportLeft",
+    "MarkdownTableViewportRight",
+    "MarkdownTableYankCell",
+    "MarkdownTableYankTable",
+    "MarkdownTableExport",
   }) do
     h.assert_eq("command exists: " .. command, vim.fn.exists(":" .. command), 2)
   end

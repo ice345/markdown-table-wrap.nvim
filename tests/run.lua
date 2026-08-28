@@ -30,6 +30,7 @@ local specs = {
   "tests.spec.v04_spec",
   "tests.spec.cell_ops_spec",
   "tests.spec.export_spec",
+  "tests.spec.wide_table_spec",
 }
 
 for _, spec in ipairs(specs) do

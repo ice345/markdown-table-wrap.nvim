@@ -327,6 +327,14 @@ COMMANDS                                      *markdown-table-wrap-commands*
 :MarkdownTableScrollBottom
     Jump the rendered table viewport to the bottom.
 
+                                                   *:MarkdownTableViewportLeft*
+:MarkdownTableViewportLeft
+    Move the explicit wide-table column viewport toward earlier columns.
+
+                                                  *:MarkdownTableViewportRight*
+:MarkdownTableViewportRight
+    Move the explicit wide-table column viewport toward later columns.
+
                                                      *:MarkdownTableYankCell*
 :MarkdownTableYankCell
     Copy the semantic text displayed by the cell under the cursor. Markdown
@@ -541,6 +549,17 @@ inline_viewport_scrolling~
     use. In that mode, scroll commands fall back to normal window scrolling
     because the table is already expanded visually.
 
+wide_table~                         *markdown-table-wrap-wide-table*
+    Optional policies for wide tables. The default mode is "wrap", preserving
+    the existing fit-and-wrap layout. Set mode = "viewport" to render a
+    contiguous column slice with a marker (default …) on each hidden side.
+    viewport.start_column and viewport.column_count choose the slice; the
+    :MarkdownTableViewportLeft/Right commands move it. columns[n] accepts
+    width (fixed), min, max, weight, and priority. Fixed widths are retained;
+    when constraints cannot fit, layout.overflow is true in the rendered model
+    and the best-effort result is deterministic. allocate_extra = true uses
+    weight to distribute spare width.
+
 link~
     Icon configuration for links, wiki links, images, and URL pattern matches.
     link.resolver may be a function(target, context, strategy). Return true or
@@ -652,7 +671,7 @@ action({name}, {opts})~                       *markdown-table-wrap.action()*
     toggle_inline, edit_source, close, refresh, open, open_split,
     open_vsplit, open_tab, next_buffer, previous_buffer, alternate_buffer,
     split_source, vsplit_source, tab_source, inspect, help, copy_cell,
-    copy_table, export_tsv, and export_csv.
+    copy_table, export_tsv, export_csv, viewport_left, and viewport_right.
 
 statusline({bufnr})~                       *markdown-table-wrap.statusline()*
     Return a compact component such as "MTW Reader T3:C2", or an empty string
@@ -671,6 +690,7 @@ Stable normal-mode <Plug> mappings use the following names:
 - <Plug>(MarkdownTableWrapInspect) and Help
 - <Plug>(MarkdownTableWrapCopyCell) and CopyTable
 - <Plug>(MarkdownTableWrapExportTSV) and ExportCSV
+- <Plug>(MarkdownTableWrapViewportLeft) and ViewportRight
 
 The plugin emits User events MarkdownTableWrapReaderEnter,
 MarkdownTableWrapReaderLeave, MarkdownTableWrapViewChanged, and

@@ -129,6 +129,6 @@
 ---@field reader? table
 ---@field mappings? { reader?: MarkdownTableWrapReaderMappings|false, float?: MarkdownTableWrapFloatMappings|false }
 ---@field link? { resolver?: fun(target: MarkdownTableWrapTarget, context: MarkdownTableWrapContext, strategy: MarkdownTableWrapOpenStrategy): boolean|string|nil }
----@field wide_table? table
+---@field wide_table? { mode?: "wrap"|"viewport", allocate_extra?: boolean, viewport?: { start_column?: integer, column_count?: integer, marker?: string }, columns?: table<integer, { width?: integer, min?: integer, max?: integer, weight?: number, priority?: integer }> }
 
 return {}

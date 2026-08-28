@@ -98,6 +98,14 @@ actions.scroll_bottom = function()
   return true
 end
 
+actions.viewport_left = function(_, opts)
+  return require("markdown-table-wrap").shift_wide_table_viewport(-(tonumber(opts.count) or 1))
+end
+
+actions.viewport_right = function(_, opts)
+  return require("markdown-table-wrap").shift_wide_table_viewport(tonumber(opts.count) or 1)
+end
+
 local function buffer_command(context, command)
   if (context.mode == "reader" or context.mode == "float") and not leave_view(context) then
     return false

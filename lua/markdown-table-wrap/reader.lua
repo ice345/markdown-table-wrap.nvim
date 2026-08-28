@@ -80,6 +80,33 @@ local function build(source_bufnr, config)
   }
 end
 
+local function adjust_viewport_for_cursor(source_bufnr, config, source_lnum, source_col)
+  local wide = config and config.wide_table
+  if type(wide) ~= "table" or wide.mode ~= "viewport" then
+    return config
+  end
+  local table_info = parser.parse_at_cursor(source_bufnr, source_lnum)
+  if not table_info then
+    return config
+  end
+  local row = source_lnum == table_info.start_lnum and table_info.header or nil
+  if not row then
+    for _, candidate in ipairs(table_info.rows or {}) do
+      if candidate.source_lnum == source_lnum then
+        row = candidate
+        break
+      end
+    end
+  end
+  for index, cell in ipairs(row or {}) do
+    local span = cell.source_span
+    if span and source_col >= span.start_col and source_col <= span.end_col then
+      return render.ensure_viewport(config, #table_info.header, index)
+    end
+  end
+  return config
+end
+
 local function apply_table_highlights(reader_bufnr, built, config)
   vim.api.nvim_buf_clear_namespace(reader_bufnr, namespace, 0, -1)
   require("markdown-table-wrap.theme").apply(config)
@@ -364,6 +391,7 @@ function M.open(source_bufnr, config)
     conceallevel = vim.wo[winid].conceallevel,
     concealcursor = vim.wo[winid].concealcursor,
   }
+  config = adjust_viewport_for_cursor(source_bufnr, config, source_cursor[1], source_cursor[2])
   local built = build(source_bufnr, config)
   local reader_bufnr = create_reader_buffer(source_bufnr)
   local source_bufhidden = acquire_source(source_bufnr, reader_bufnr)
@@ -525,6 +553,8 @@ function M.refresh(reader_bufnr)
   M.clear_visual_selection(reader_bufnr)
   local cursor = vim.api.nvim_win_get_cursor(winid)
   local source_lnum = state.reader_to_source[cursor[1]] or 1
+  local source_col = select(2, source_cursor_for(state, cursor[1], cursor[2]))
+  state.config = adjust_viewport_for_cursor(state.source_bufnr, state.config, source_lnum, source_col)
   local built = vim.api.nvim_win_call(winid, function()
     return build(state.source_bufnr, state.config)
   end)

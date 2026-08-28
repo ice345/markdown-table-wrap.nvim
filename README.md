@@ -393,6 +393,9 @@ inline and floating modes.
 - `:MarkdownTableYankTable` copies the complete rendered table under the cursor.
 - `:MarkdownTableExport[!] [tsv|csv]` copies the current table (or every table
   with `!`) as TSV or CSV; the default format is TSV.
+- `:MarkdownTableViewportLeft` and `:MarkdownTableViewportRight` move the
+  explicit wide-table column viewport. They are no-ops while the compatibility
+  wrap mode is active.
 
 Press `q` inside Reader to return to Source, or inside the floating preview window to close the float.
 
@@ -435,6 +438,11 @@ require("markdown-table-wrap").setup({
   inline_disable_wrap = true,
   inline_wrap_scope = "cursor",
   inline_viewport_scrolling = false,
+  wide_table = {
+    mode = "wrap", -- "wrap" (default) or "viewport"
+    viewport = { start_column = 1, column_count = nil, marker = "…" },
+    columns = {}, -- [column] = { width, min, max, weight, priority }
+  },
   reader = {
     auto_open = "has_table",
     wrap = true,
@@ -518,6 +526,14 @@ Options:
 - `inline_disable_wrap`: temporarily set `nowrap` in windows showing inline replace mode so long source rows do not soft-wrap underneath the rendered table.
 - `inline_wrap_scope`: controls where `inline_disable_wrap` applies. `"always"` keeps the window-wide `nowrap` behavior, `"cursor"` (the default) disables wrapping only while the cursor is inside a rendered table, and `"never"` leaves `wrap` fully under user control.
 - `inline_viewport_scrolling`: when `true`, `:MarkdownTableScrollDown` and `:MarkdownTableScrollUp` page through rendered rows inside the original table height. The default is `false`, which shows the complete rendered table inline with extra virtual lines.
+- `wide_table`: optional column policy for wide tables. `mode = "wrap"`
+  preserves the compatibility fit-and-wrap behavior. `mode = "viewport"`
+  renders a contiguous column slice and adds `…` markers for hidden columns;
+  use `viewport.start_column`/`column_count` or the left/right commands to move
+  the slice. `columns[n]` accepts `width` (fixed), `min`, `max`, `weight`, and
+  `priority`; explicit fixed widths are preserved, and impossible constraints
+  are reported in the rendered `layout.overflow` metadata. Set
+  `allocate_extra = true` to distribute spare width by weight.
 - `highlight_preset`: `"default"`, `"tokyonight"`, `"catppuccin"`, `"render_markdown"`, `"auto"`, or any custom key supplied through `themes`/`theme_dir`. The default preset follows standard Neovim highlight groups so it fits arbitrary colorschemes without extra theme tuning.
 - `theme_dir`: optional directory containing custom theme files named `<preset>.lua`; the file name must match `highlight_preset`.
 - `themes`: inline custom theme table keyed by `highlight_preset`.

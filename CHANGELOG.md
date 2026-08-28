@@ -18,6 +18,9 @@ All notable changes to `markdown-table-wrap.nvim` are documented here.
   `:MarkdownTableExport[!] [tsv|csv]`. Rendered copy omits Markdown syntax and
   decorative icons; TSV/CSV export keeps delimiters and quotes structurally
   safe without mutating Source.
+- Add opt-in `wide_table` column policies with fixed/min/max/weight/priority
+  rules, deterministic overflow metadata, and a marker-based horizontal column
+  viewport with left/right commands.
 
 ## 0.4.0 - Exact Metadata, GFM Correctness, And Performance
 

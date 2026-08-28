@@ -34,6 +34,15 @@ local defaults = {
   inline_disable_wrap = true,
   inline_wrap_scope = "cursor",
   inline_viewport_scrolling = false,
+  wide_table = {
+    mode = "wrap",
+    viewport = {
+      start_column = 1,
+      column_count = nil,
+      marker = "…",
+    },
+    columns = {},
+  },
   reader = {
     auto_open = "has_table",
     wrap = true,
@@ -102,6 +111,7 @@ M.state = {
   auto_buffers = {},
   buffer_modes = {},
   inline_viewports = {},
+  wide_viewports = {},
   gx_fallbacks = {},
   gx_installed = {},
   gx_callbacks = {},
@@ -169,6 +179,10 @@ local function config_for_buffer(bufnr)
   config.preview_mode = preview_mode_for(bufnr)
   config.auto_preview = auto_preview_for(bufnr)
   config.inline_viewport_scrolling = inline_viewport_for(bufnr)
+  local viewport = M.state.wide_viewports[bufnr]
+  if viewport and type(config.wide_table) == "table" and type(config.wide_table.viewport) == "table" then
+    config.wide_table.viewport.start_column = viewport.start_column or config.wide_table.viewport.start_column
+  end
   return config
 end
 
@@ -334,6 +348,59 @@ local function validate_config()
     math.floor(math.max(0, math.min(3, tonumber(M.config.reader.conceallevel) or defaults.reader.conceallevel)))
   if type(M.config.reader.concealcursor) ~= "string" or M.config.reader.concealcursor:match("^[nvic]*$") == nil then
     M.config.reader.concealcursor = defaults.reader.concealcursor
+  end
+
+  if type(M.config.wide_table) ~= "table" then
+    M.config.wide_table = vim.deepcopy(defaults.wide_table)
+  else
+    M.config.wide_table = vim.tbl_deep_extend("force", vim.deepcopy(defaults.wide_table), M.config.wide_table)
+  end
+  if not vim.tbl_contains({ "wrap", "viewport" }, M.config.wide_table.mode) then
+    M.config.wide_table.mode = defaults.wide_table.mode
+  end
+  if type(M.config.wide_table.viewport) ~= "table" then
+    M.config.wide_table.viewport = vim.deepcopy(defaults.wide_table.viewport)
+  else
+    M.config.wide_table.viewport =
+      vim.tbl_deep_extend("force", vim.deepcopy(defaults.wide_table.viewport), M.config.wide_table.viewport)
+  end
+  M.config.wide_table.viewport.start_column = math.max(
+    1,
+    math.floor(tonumber(M.config.wide_table.viewport.start_column) or defaults.wide_table.viewport.start_column)
+  )
+  if M.config.wide_table.viewport.column_count ~= nil then
+    local count = tonumber(M.config.wide_table.viewport.column_count)
+    M.config.wide_table.viewport.column_count = count and math.max(1, math.floor(count)) or nil
+  end
+  if type(M.config.wide_table.viewport.marker) ~= "string" or M.config.wide_table.viewport.marker == "" then
+    M.config.wide_table.viewport.marker = defaults.wide_table.viewport.marker
+  end
+  if type(M.config.wide_table.columns) ~= "table" then
+    M.config.wide_table.columns = {}
+  end
+  for index, rule in pairs(M.config.wide_table.columns) do
+    if type(rule) ~= "table" or tonumber(index) == nil then
+      M.config.wide_table.columns[index] = nil
+    else
+      if rule.width ~= nil then
+        rule.width = math.max(1, math.floor(tonumber(rule.width) or 1))
+      end
+      if rule.min ~= nil then
+        rule.min = math.max(1, math.floor(tonumber(rule.min) or 1))
+      end
+      if rule.max ~= nil then
+        rule.max = math.max(rule.min or 1, math.floor(tonumber(rule.max) or (rule.min or 1)))
+      end
+      if rule.min and rule.max and rule.max < rule.min then
+        rule.max = rule.min
+      end
+      if rule.weight ~= nil then
+        rule.weight = math.max(0, tonumber(rule.weight) or 1)
+      end
+      if rule.priority ~= nil then
+        rule.priority = math.max(0, math.floor(tonumber(rule.priority) or 0))
+      end
+    end
   end
 
   if type(M.config.themes) ~= "table" then
@@ -508,6 +575,7 @@ local function table_signature(bufnr, table_info, config)
     tostring(config.inline_disable_wrap),
     tostring(config.inline_wrap_scope),
     tostring(config.inline_viewport_scrolling),
+    vim.inspect(config.wide_table or {}),
     table.concat(lines, "\n"),
   }, "\31")
 end
@@ -529,6 +597,7 @@ local function all_tables_signature(bufnr, tables, config)
     tostring(config.inline_wrap_scope),
     tostring(config.overlay_fill),
     tostring(config.inline_viewport_scrolling),
+    vim.inspect(config.wide_table or {}),
   }
 
   for _, table_info in ipairs(tables) do
@@ -967,6 +1036,43 @@ function M.toggle_inline_viewport_scrolling()
   )
 end
 
+local function wide_viewport_source()
+  local reader = require("markdown-table-wrap.reader")
+  local bufnr = vim.api.nvim_get_current_buf()
+  if reader.is_reader(bufnr) then
+    return reader.source_bufnr(bufnr), bufnr
+  end
+  return bufnr, bufnr
+end
+
+function M.set_wide_table_viewport(start_column, bufnr)
+  bufnr = bufnr or select(1, wide_viewport_source())
+  bufnr = normalize_bufnr(bufnr)
+  local start = tonumber(start_column)
+  if not start then
+    return false
+  end
+  start = math.max(1, math.floor(start))
+  M.state.wide_viewports[bufnr] = { start_column = start }
+  local current = vim.api.nvim_get_current_buf()
+  local reader = require("markdown-table-wrap.reader")
+  if reader.is_reader(current) and reader.source_bufnr(current) == bufnr then
+    reader.reconfigure(current, config_for_buffer(bufnr))
+  elseif current == bufnr then
+    M.state.last_signature[bufnr] = nil
+    M.refresh_auto({ bufnr = bufnr, force = true })
+  end
+  return true
+end
+
+function M.shift_wide_table_viewport(delta, bufnr)
+  bufnr = bufnr or select(1, wide_viewport_source())
+  bufnr = normalize_bufnr(bufnr)
+  local config = config_for_buffer(bufnr)
+  local current = tonumber((config.wide_table or {}).viewport and config.wide_table.viewport.start_column) or 1
+  return M.set_wide_table_viewport(current + (tonumber(delta) or 0), bufnr)
+end
+
 function M.scroll_view(delta)
   if require("markdown-table-wrap.inline").scroll(vim.api.nvim_get_current_buf(), delta) then
     return
@@ -1140,6 +1246,7 @@ local function create_autocmds()
       M.state.auto_buffers[args.buf] = nil
       M.state.buffer_modes[args.buf] = nil
       M.state.inline_viewports[args.buf] = nil
+      M.state.wide_viewports[args.buf] = nil
       M.state.gx_fallbacks[args.buf] = nil
       M.state.gx_installed[args.buf] = nil
       M.state.gx_callbacks[args.buf] = nil
@@ -1197,6 +1304,8 @@ local function register_plug_mappings()
     ["<Plug>(MarkdownTableWrapCopyTable)"] = "copy_table",
     ["<Plug>(MarkdownTableWrapExportTSV)"] = "export_tsv",
     ["<Plug>(MarkdownTableWrapExportCSV)"] = "export_csv",
+    ["<Plug>(MarkdownTableWrapViewportLeft)"] = "viewport_left",
+    ["<Plug>(MarkdownTableWrapViewportRight)"] = "viewport_right",
   }
 
   for lhs, action in pairs(plugs) do
@@ -1229,6 +1338,7 @@ function M.setup(opts)
   M.state.auto_buffers = {}
   M.state.buffer_modes = {}
   M.state.inline_viewports = {}
+  M.state.wide_viewports = {}
   M.state.last_signature = {}
   M.state.visual_buffers = {}
   M.state.inline_buf = nil
@@ -1385,6 +1495,14 @@ function M.setup(opts)
   vim.api.nvim_create_user_command("MarkdownTableScrollBottom", function()
     M.scroll_view_to("bottom")
   end, { desc = "Scroll rendered Markdown table view to the bottom", force = true })
+
+  vim.api.nvim_create_user_command("MarkdownTableViewportLeft", function(opts_cmd)
+    M.shift_wide_table_viewport(-(tonumber(opts_cmd.count) or 1))
+  end, { desc = "Show earlier columns in a wide table viewport", count = true, force = true })
+
+  vim.api.nvim_create_user_command("MarkdownTableViewportRight", function(opts_cmd)
+    M.shift_wide_table_viewport(tonumber(opts_cmd.count) or 1)
+  end, { desc = "Show later columns in a wide table viewport", count = true, force = true })
 
   vim.api.nvim_create_user_command("MarkdownTableYankCell", function()
     M.copy_rendered_cell()
