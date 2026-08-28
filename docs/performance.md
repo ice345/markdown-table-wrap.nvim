@@ -1,6 +1,8 @@
 # Performance Reference
 
-v0.4 separates table discovery, parsing/inline tokens, and layout caches. A
+v0.5 retains the v0.4 separation of table discovery, parsing/inline tokens, and
+layout caches. The explicit Source editing companion does not run during
+rendering and therefore does not change the read-only rendering cost model. A
 Source buffer changedtick invalidates discovery and parse results; the layout
 stage additionally includes the window text width and geometry-related options.
 Closing or wiping the Source releases every buffer-owned cache entry.

@@ -9,9 +9,9 @@ rename its development branch as part of a release.
 - Repository: `ice345/markdown-table-wrap.nvim`
 - Remote: `origin` (`git@github.com:ice345/markdown-table-wrap.nvim.git`)
 - Development/release branch: `master`
-- Latest published tag: `v0.4.0`
-- Next planned release: `v0.5.0` (Source-aware Reader cell operations are
-  currently tracked under `CHANGELOG.md` Unreleased)
+- Latest published tag: `v0.5.0`
+- Next planned release: `v0.6.0` (measured viewport/lazy materialization and
+  compatibility follow-up; see the maintainer-local `ROADMAP.md`)
 - Supported Neovim baseline: 0.10+
 
 Verify these values rather than assuming the local checkout is current:
@@ -24,10 +24,11 @@ git status --short
 git tag --sort=-version:refname | head
 ```
 
-The v0.4.0 section below is the retained release record and checklist example.
-For a future release, substitute the target version and milestone scope from
-the maintainer-local `ROADMAP.md`. Release only from `master`, with no
-unrelated local changes, after the branch is up to date with `origin/master`.
+The v0.4.0 section below is the retained release record and checklist example;
+the same gates apply to v0.5.0 and later releases. Substitute the target
+version and milestone scope from the maintainer-local `ROADMAP.md`. Release
+only from `master`, with no unrelated local changes, after the branch is up to
+date with `origin/master`.
 
 ## Historical v0.4.0 Checklist
 
@@ -322,6 +323,38 @@ Known scope:
   view for very wide tables.
 - Third-party Bufferline/Telescope/Harpoon workflows remain release-time manual
   checks; the plugin does not add those dependencies.
+
+## v0.5.0 Release Notes Draft
+
+### markdown-table-wrap.nvim v0.5.0
+
+v0.5.0 turns the plugin into a Source-backed Table Workbench while keeping
+automatic rendering read-only.
+
+Highlights:
+
+- Source-aware Reader cell operations (`yic`, `vic`, `dic`, `cic`, `cip`, and
+  contextual `c`) preserve Markdown semantics and native Visual behavior.
+- Semantic rendered-cell/table copy and TSV/CSV export keep Source copy
+  explicitly distinct and do not mutate the document.
+- Wide-table policies add an opt-in column viewport, deterministic hidden
+  markers, and per-column width/priority rules while retaining wrap as the
+  default.
+- Reader ergonomics include optional sticky headers, indexed cell lookup, and
+  explicit status/help context for large documents.
+- Source editing commands format tables, add/delete/move rows and columns,
+  cycle alignment, and edit a long cell in a focused popup. Every successful
+  rewrite is one undo step and malformed excess-cell tables are refused.
+
+Verification for the release candidate:
+
+- 165 headless regression tests pass on the local Neovim 0.12.4 runtime.
+- The reference benchmark measured about 1.51 s cold Reader open, 0.31 s full
+  refresh, and 43 ms for 500 `gg`/`G` pairs on the 4,002-line/20,005-line
+  large-Reader fixture. CI remains the authority for Neovim 0.10.4 and stable.
+- The manual terminal/compositor matrix remains required for release review,
+  especially narrow panes, CJK/code cells, third-party renderer coexistence,
+  and Source popup editing.
 
 ## Future Releases
 

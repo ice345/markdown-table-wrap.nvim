@@ -1,6 +1,6 @@
 local M = {}
 
-M.version = "0.4.0"
+M.version = "0.5.0"
 
 local defaults = {
   max_width_ratio = 0.9,

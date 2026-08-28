@@ -2,7 +2,7 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
-## Unreleased
+## 0.5.0 - Table Workbench
 
 ### Added
 
