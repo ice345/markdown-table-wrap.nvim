@@ -17,7 +17,7 @@ were added:
 | GFM parsing | `parser_spec.lua` | delimiter validation, escaped/optional outer pipes, GFM missing-cell rows, fenced and block boundaries, linear large-document scanning |
 | Inline Markdown | `markdown_spec.lua`, `wrap_spec.lua` | code, emphasis, links, icons, concealed code delimiters, hard breaks, CJK width, preferred wrap boundaries, metadata preservation |
 | Geometry | `width_spec.lua`, `render_spec.lua` | display width, padding, alignment, border variants, source-row mapping, fit-to-window and intentional overflow |
-| Neovim views | `inline_spec.lua`, `reader_spec.lua`, `mode_spec.lua`, `lifecycle_spec.lua`, `multiwindow_spec.lua`, `cell_ops_spec.lua`, `reader_ergonomics_spec.lua` | conceal/extmarks, wrap scope, viewport scrolling, per-buffer debounce/state, Reader policy, native buffer exits, shared-Source Readers, window option and lifetime cleanup, Source-aware cell yank/change/put and visible Visual feedback, sticky headers, indexed cell lookup, and help ergonomics |
+| Neovim views | `inline_spec.lua`, `reader_spec.lua`, `mode_spec.lua`, `lifecycle_spec.lua`, `multiwindow_spec.lua`, `cell_ops_spec.lua`, `reader_ergonomics_spec.lua`, `table_edit_spec.lua` | conceal/extmarks, wrap scope, viewport scrolling, per-buffer debounce/state, Reader policy, native buffer exits, shared-Source Readers, window option and lifetime cleanup, Source-aware cell yank/change/put and visible Visual feedback, sticky headers, indexed cell lookup, help ergonomics, explicit Source table rewrites, one-cell popup edits, and unsafe-table guards |
 | Context and actions | `context_spec.lua`, `actions_spec.lua`, `inspect_spec.lua` | Source resolution across modes, stable actions and Plug mappings, disabled/local mappings, passthrough, inspect/help/statusline, health diagnostics |
 | Links and mappings | `links_spec.lua`, `mappings_spec.lua` | relative/absolute files, line/anchor/wiki/image/URL targets, Float/Reader metadata, custom resolver, selector, callback/string/expr/remap/replace_keycodes restore semantics |
 | Interaction | `nav_spec.lua`, `config_spec.lua`, `system_spec.lua` | cell navigation, commands, lazy-loading timing, configuration validation, filetype boundaries |
@@ -63,3 +63,7 @@ plugins' extmarks are outside a headless process:
     `MARKDOWN_TABLE_WRAP_BENCH_READER=1`; then repeat `gg`, `G`, search,
     selection, and yank in a real UI because headless cursor timing excludes
     terminal redraw.
+15. Run the Source editing companion commands from Source and Reader: format,
+    add/delete/move rows and columns, toggle alignment, and edit a long cell
+    in the popup. Confirm each commit is one undo step, Reader/Float returns to
+    Source before mutation, and a table with excess cells is refused unchanged.

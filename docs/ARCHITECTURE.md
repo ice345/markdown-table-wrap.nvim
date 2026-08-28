@@ -63,6 +63,7 @@ text or user intent.
 | `reader.lua` | Builds full-document Reader buffers, maps Reader lines/cells to Source, protects rendered tables from secondary Markdown parsing, and owns Reader lifecycle |
 | `cell_ops.lua` | Resolves the logical Reader cell, performs exact Source-span yank/mutation operations, enters Source Insert for changes, and installs configurable cell mappings/fallbacks |
 | `export.lua` | Resolves Source-backed cell/table identity, copies semantic rendered values, and serializes selected tables as TSV/CSV without Source mutation |
+| `table_edit.lua` | Performs explicit, validated Source table rewrites (format, row/column structure, alignment) and one-cell popup edits; never participates in automatic rendering |
 | `context.lua` | Resolves any view to one mode-independent Source/table/cell/window context |
 | `actions.lua` | Dispatches mode-independent commands and safely leaves disposable views before buffer/window operations |
 | `links.lua` | Extracts/classifies targets, resolves paths relative to Source, opens targets, and supports custom resolution |
@@ -176,6 +177,40 @@ render on demand with the active window configuration. Clipboard writes update
 the unnamed/yank registers (and `+` when enabled); no export path edits Source.
 TSV uses C-style escapes for control characters, and CSV doubles embedded
 quotes and quotes fields containing delimiters or line breaks.
+
+## Source Editing Companion
+
+`table_edit.lua` is the explicit mutation boundary for structural table
+operations. It is deliberately separate from `render.lua`, `reader.lua`, and
+automatic refresh scheduling: rendering can only derive views, while a user
+command or a named action must opt into a Source rewrite.
+
+The pipeline is:
+
+```text
+current view → context/source resolution → parse current table
+      │                  │                         │
+      │                  │                         ├─ reject excess cells
+      │                  │                         ├─ build normalized rows
+      │                  │                         └─ preserve alignments
+      │                  └─ leave Reader/Float (if needed)
+      └─ canonical Source replacement → one undo step → normal refresh path
+```
+
+Formatting and row/column operations replace the table's complete physical
+range in one `nvim_buf_set_lines()` call. This makes each command one normal
+undo unit and avoids a partially rewritten delimiter or row. The formatter
+uses display width for padding and emits parser-valid delimiter cells. Tables
+with excess Source cells are refused before any mutation; deleting the final
+column is also refused. Missing normalized cells remain empty and are never
+silently reconstructed from neighboring text.
+
+`MarkdownTableEditCell` uses a nofile scratch float only as a focused editor for
+one present, one-line Source span. `<C-s>` commits the popup text with one
+`nvim_buf_set_text()` range replacement; `Esc`/`q` discards it. The popup is not
+an alternate document buffer, has no save path, and is always disposable. A
+Reader or Float is closed before a commit so Neovim's normal Source undo,
+modified flag, mappings, and integrations remain authoritative.
 
 ## State Model
 

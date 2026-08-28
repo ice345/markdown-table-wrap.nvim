@@ -23,6 +23,10 @@ All notable changes to `markdown-table-wrap.nvim` are documented here.
   viewport with left/right commands.
 - Add optional Reader sticky headers and an indexed logical-cell map so cursor
   updates remain bounded for large rendered documents.
+- Add an explicit Source editing companion for table formatting, row/column
+  add/delete/move, alignment cycling, and focused long-cell popup editing.
+  Every rewrite is validated, one undo step, and refuses excess-cell tables
+  without a partial change; automatic rendering remains read-only.
 
 ## 0.4.0 - Exact Metadata, GFM Correctness, And Performance
 

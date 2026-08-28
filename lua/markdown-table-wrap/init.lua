@@ -235,6 +235,15 @@ function M.export_table(opts)
   return require("markdown-table-wrap.export").export(opts)
 end
 
+function M.edit_table(action, opts)
+  local editor = require("markdown-table-wrap.table_edit")
+  local fn = editor[action]
+  if type(fn) ~= "function" then
+    return false
+  end
+  return fn(opts or {})
+end
+
 ---@param bufnr? integer
 ---@return string
 function M.statusline(bufnr)
@@ -1310,6 +1319,17 @@ local function register_plug_mappings()
     ["<Plug>(MarkdownTableWrapExportCSV)"] = "export_csv",
     ["<Plug>(MarkdownTableWrapViewportLeft)"] = "viewport_left",
     ["<Plug>(MarkdownTableWrapViewportRight)"] = "viewport_right",
+    ["<Plug>(MarkdownTableWrapFormatTable)"] = "format_table",
+    ["<Plug>(MarkdownTableWrapAddRow)"] = "add_row_table",
+    ["<Plug>(MarkdownTableWrapDeleteRow)"] = "delete_row_table",
+    ["<Plug>(MarkdownTableWrapMoveRowUp)"] = "move_row_up_table",
+    ["<Plug>(MarkdownTableWrapMoveRowDown)"] = "move_row_down_table",
+    ["<Plug>(MarkdownTableWrapAddColumn)"] = "add_column_table",
+    ["<Plug>(MarkdownTableWrapDeleteColumn)"] = "delete_column_table",
+    ["<Plug>(MarkdownTableWrapMoveColumnLeft)"] = "move_column_left_table",
+    ["<Plug>(MarkdownTableWrapMoveColumnRight)"] = "move_column_right_table",
+    ["<Plug>(MarkdownTableWrapToggleAlignment)"] = "toggle_alignment_table",
+    ["<Plug>(MarkdownTableWrapEditCell)"] = "open_cell_popup_table",
   }
 
   for lhs, action in pairs(plugs) do
@@ -1531,6 +1551,26 @@ function M.setup(opts)
     end,
     force = true,
   })
+
+  local edit_commands = {
+    MarkdownTableFormat = "format",
+    MarkdownTableAddRow = "add_row",
+    MarkdownTableDeleteRow = "delete_row",
+    MarkdownTableMoveRowUp = "move_row_up",
+    MarkdownTableMoveRowDown = "move_row_down",
+    MarkdownTableAddColumn = "add_column",
+    MarkdownTableDeleteColumn = "delete_column",
+    MarkdownTableMoveColumnLeft = "move_column_left",
+    MarkdownTableMoveColumnRight = "move_column_right",
+    MarkdownTableToggleAlignment = "toggle_alignment",
+    MarkdownTableEditCell = "open_cell_popup",
+  }
+  for command, action in pairs(edit_commands) do
+    local editor_action = action
+    vim.api.nvim_create_user_command(command, function()
+      M.edit_table(editor_action)
+    end, { desc = "Edit the current Markdown table in Source", force = true })
+  end
 
   if auto_preview_for(vim.api.nvim_get_current_buf()) and is_markdown_buffer() then
     M.schedule_refresh({

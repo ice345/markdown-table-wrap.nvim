@@ -242,6 +242,29 @@ actions.export_csv = function(context, opts)
   return require("markdown-table-wrap.export").export(opts)
 end
 
+local function table_edit_action(name, context, opts)
+  opts = vim.tbl_extend("force", {}, opts or {}, { context = context })
+  return require("markdown-table-wrap.table_edit")[name](opts)
+end
+
+for _, name in ipairs({
+  "format",
+  "add_row",
+  "delete_row",
+  "move_row_up",
+  "move_row_down",
+  "add_column",
+  "delete_column",
+  "move_column_left",
+  "move_column_right",
+  "toggle_alignment",
+  "open_cell_popup",
+}) do
+  actions[name .. "_table"] = function(context, opts)
+    return table_edit_action(name, context, opts)
+  end
+end
+
 function M.run(name, opts)
   opts = opts or {}
   local action = actions[name]

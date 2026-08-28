@@ -235,6 +235,17 @@ The default interaction model is:
 - `:MarkdownTableExport [tsv|csv]` exports the current table as structured
   text; add `!` to export every table in the Source buffer. TSV uses C-style
   escapes for tabs/newlines and CSV uses quote escaping.
+- The explicit Source editing companion is available through
+  `:MarkdownTableFormat`, `:MarkdownTableAddRow`, `:MarkdownTableDeleteRow`,
+  `:MarkdownTableMoveRowUp`, `:MarkdownTableMoveRowDown`,
+  `:MarkdownTableAddColumn`, `:MarkdownTableDeleteColumn`,
+  `:MarkdownTableMoveColumnLeft`, `:MarkdownTableMoveColumnRight`,
+  `:MarkdownTableToggleAlignment`, and `:MarkdownTableEditCell`. These
+  commands leave Reader/Float before changing the canonical Source. Structural
+  edits are formatted as one undo step, preserve neighboring cells and table
+  delimiters, and refuse tables with excess cells instead of guessing how to
+  rewrite them. `MarkdownTableEditCell` opens a focused popup; `<C-s>` saves
+  the exact cell source and `Esc`/`q` cancels.
 - Native `v`, `V`, and `<C-v>` remain native selections. Reader adds a visible `Visual` overlay so selection is still obvious on rendered table cells; it does not turn them into source-text selections.
 - `i`, `a`, `I`, `A`, `o`, and `O` switch to the mapped source line for editing. Reader reopens after `InsertLeave`.
 - `:w`, `:wq`, `:x`, and `ZZ` save the backing Markdown source directly. The rendered buffer itself is never written to disk; `:wq` then quits as usual.
@@ -393,6 +404,16 @@ inline and floating modes.
 - `:MarkdownTableYankTable` copies the complete rendered table under the cursor.
 - `:MarkdownTableExport[!] [tsv|csv]` copies the current table (or every table
   with `!`) as TSV or CSV; the default format is TSV.
+- `:MarkdownTableFormat` canonicalizes the current table in Source. The row
+  commands (`:MarkdownTableAddRow`, `:MarkdownTableDeleteRow`,
+  `:MarkdownTableMoveRowUp`, `:MarkdownTableMoveRowDown`) and column commands
+  (`:MarkdownTableAddColumn`, `:MarkdownTableDeleteColumn`,
+  `:MarkdownTableMoveColumnLeft`, `:MarkdownTableMoveColumnRight`) perform
+  explicit, one-undo Source edits.
+- `:MarkdownTableToggleAlignment` cycles the current column through left,
+  center, and right alignment. `:MarkdownTableEditCell` opens a focused
+  one-cell Source popup (`<C-s>` saves, `Esc`/`q` cancels). Structural commands
+  refuse excess-cell tables and make no partial change.
 - `:MarkdownTableViewportLeft` and `:MarkdownTableViewportRight` move the
   explicit wide-table column viewport. They are no-ops while the compatibility
   wrap mode is active.

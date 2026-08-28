@@ -351,6 +351,58 @@ COMMANDS                                      *markdown-table-wrap-commands*
     table in the Source buffer. TSV uses C-style escapes for tabs/newlines;
     CSV doubles embedded quotes and quotes fields containing delimiters.
 
+                                                       *:MarkdownTableFormat*
+:MarkdownTableFormat
+    Canonicalize the current table in the Source buffer. Rendering never runs
+    this formatter implicitly.
+
+                                                      *:MarkdownTableAddRow*
+:MarkdownTableAddRow
+    Add an empty body row after the current row (or at the end of the table).
+
+                                                   *:MarkdownTableDeleteRow*
+:MarkdownTableDeleteRow
+    Delete the current body row. The header and delimiter remain intact.
+
+                                                  *:MarkdownTableMoveRowUp*
+:MarkdownTableMoveRowUp
+    Move the current body row one position upward.
+
+                                                *:MarkdownTableMoveRowDown*
+:MarkdownTableMoveRowDown
+    Move the current body row one position downward.
+
+                                                   *:MarkdownTableAddColumn*
+:MarkdownTableAddColumn
+    Add an empty column after the current column (or at the end of the table).
+
+                                                *:MarkdownTableDeleteColumn*
+:MarkdownTableDeleteColumn
+    Delete the current column. A table must retain at least one column.
+
+                                               *:MarkdownTableMoveColumnLeft*
+:MarkdownTableMoveColumnLeft
+    Move the current column one position to the left.
+
+                                              *:MarkdownTableMoveColumnRight*
+:MarkdownTableMoveColumnRight
+    Move the current column one position to the right.
+
+                                             *:MarkdownTableToggleAlignment*
+:MarkdownTableToggleAlignment
+    Cycle the current column alignment through left, center, and right.
+
+                                                   *:MarkdownTableEditCell*
+:MarkdownTableEditCell
+    Open the current one-line cell Source range in a focused scratch popup.
+    Press CTRL-S to commit one exact Source edit, or ESC/q to cancel. The
+    popup is not an editable copy of the document and is discarded on close.
+
+Source editing companion commands leave Reader or Float before mutating the
+canonical Source. Each structural or popup commit is one undo step. Commands
+refuse malformed tables with excess cells and make no partial rewrite; missing
+or multi-line cell ranges are also rejected by the popup.
+
 ==============================================================================
 CONFIGURATION                              *markdown-table-wrap-configuration*
 
@@ -597,6 +649,11 @@ mappings~                              *markdown-table-wrap-mappings*
     mappings.reader.copy_cell and copy_table optionally install local keys for
     the semantic rendered-cell and complete rendered-table copy actions. Both
     default to false, so no additional Reader key is consumed by default.
+
+    Source editing companion commands do not add default normal-mode keys.
+    Their stable actions and <Plug> mappings are documented under
+    |markdown-table-wrap-api|. They always leave Reader/Float before a Source
+    rewrite and refuse excess-cell tables without partial changes.
 >
       mappings = {
         reader = {
@@ -678,7 +735,18 @@ action({name}, {opts})~                       *markdown-table-wrap.action()*
     toggle_inline, edit_source, close, refresh, open, open_split,
     open_vsplit, open_tab, next_buffer, previous_buffer, alternate_buffer,
     split_source, vsplit_source, tab_source, inspect, help, copy_cell,
-    copy_table, export_tsv, export_csv, viewport_left, and viewport_right.
+    copy_table, export_tsv, export_csv, viewport_left, viewport_right,
+    format_table, add_row_table, delete_row_table, move_row_up_table,
+    move_row_down_table, add_column_table, delete_column_table,
+    move_column_left_table, move_column_right_table,
+    toggle_alignment_table, and open_cell_popup_table.
+
+edit_table({action}, {opts})~
+    Run one explicit Source editing operation. {action} is one of format,
+    add_row, delete_row, move_row_up, move_row_down, add_column,
+    delete_column, move_column_left, move_column_right, toggle_alignment, or
+    open_cell_popup. Structural rewrites and popup commits each form one undo
+    step; rendering never calls this API implicitly.
 
 statusline({bufnr})~                       *markdown-table-wrap.statusline()*
     Return a compact component such as "MTW Reader T3:C2", or an empty string
@@ -698,6 +766,11 @@ Stable normal-mode <Plug> mappings use the following names:
 - <Plug>(MarkdownTableWrapCopyCell) and CopyTable
 - <Plug>(MarkdownTableWrapExportTSV) and ExportCSV
 - <Plug>(MarkdownTableWrapViewportLeft) and ViewportRight
+- <Plug>(MarkdownTableWrapFormatTable), AddRow, DeleteRow, MoveRowUp, and
+  MoveRowDown
+- <Plug>(MarkdownTableWrapAddColumn), DeleteColumn, MoveColumnLeft, and
+  MoveColumnRight
+- <Plug>(MarkdownTableWrapToggleAlignment) and EditCell
 
 The plugin emits User events MarkdownTableWrapReaderEnter,
 MarkdownTableWrapReaderLeave, MarkdownTableWrapViewChanged, and
