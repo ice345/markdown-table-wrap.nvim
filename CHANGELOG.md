@@ -4,6 +4,17 @@ All notable changes to `markdown-table-wrap.nvim` are documented here.
 
 ## Unreleased
 
+### Added
+
+- Add Source-aware Reader cell mappings: `yic` copies the original Markdown
+  cell source, `vic` selects a logical cell across wrapped rendered lines,
+  `dic` clears one cell without rewriting the row, `cic` clears and enters
+  Source Insert, `cip` replaces a cell from the unnamed register, and `c`
+  delegates to the same cell change behavior with a safe Source/native
+  fallback outside cells.
+- Keep native Reader `v`/`V`/`<C-v>` behavior while adding a higher-priority
+  Visual overlay so selections remain visible on rendered table cells.
+
 ## 0.4.0 - Exact Metadata, GFM Correctness, And Performance
 
 ### Added

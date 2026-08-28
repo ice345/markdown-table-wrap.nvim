@@ -29,9 +29,14 @@
 :MarkdownTableTogglePreview	markdown-table-wrap.txt	/*:MarkdownTableTogglePreview*
 :MarkdownTableToggleReader	markdown-table-wrap.txt	/*:MarkdownTableToggleReader*
 markdown-table-wrap-api	markdown-table-wrap.txt	/*markdown-table-wrap-api*
+markdown-table-wrap-cell-change	markdown-table-wrap.txt	/*markdown-table-wrap-cell-change*
+markdown-table-wrap-cell-operations	markdown-table-wrap.txt	/*markdown-table-wrap-cell-operations*
+markdown-table-wrap-cic	markdown-table-wrap.txt	/*markdown-table-wrap-cic*
+markdown-table-wrap-cip	markdown-table-wrap.txt	/*markdown-table-wrap-cip*
 markdown-table-wrap-commands	markdown-table-wrap.txt	/*markdown-table-wrap-commands*
 markdown-table-wrap-configuration	markdown-table-wrap.txt	/*markdown-table-wrap-configuration*
 markdown-table-wrap-contents	markdown-table-wrap.txt	/*markdown-table-wrap-contents*
+markdown-table-wrap-dic	markdown-table-wrap.txt	/*markdown-table-wrap-dic*
 markdown-table-wrap-highlight-preset	markdown-table-wrap.txt	/*markdown-table-wrap-highlight-preset*
 markdown-table-wrap-highlights	markdown-table-wrap.txt	/*markdown-table-wrap-highlights*
 markdown-table-wrap-inline-disable-wrap	markdown-table-wrap.txt	/*markdown-table-wrap-inline-disable-wrap*
@@ -44,7 +49,9 @@ markdown-table-wrap-overview	markdown-table-wrap.txt	/*markdown-table-wrap-overv
 markdown-table-wrap-render-markdown	markdown-table-wrap.txt	/*markdown-table-wrap-render-markdown*
 markdown-table-wrap-theme-dir	markdown-table-wrap.txt	/*markdown-table-wrap-theme-dir*
 markdown-table-wrap-themes	markdown-table-wrap.txt	/*markdown-table-wrap-themes*
+markdown-table-wrap-vic	markdown-table-wrap.txt	/*markdown-table-wrap-vic*
 markdown-table-wrap-view-choice	markdown-table-wrap.txt	/*markdown-table-wrap-view-choice*
+markdown-table-wrap-yic	markdown-table-wrap.txt	/*markdown-table-wrap-yic*
 markdown-table-wrap.action()	markdown-table-wrap.txt	/*markdown-table-wrap.action()*
 markdown-table-wrap.get_buffer_config()	markdown-table-wrap.txt	/*markdown-table-wrap.get_buffer_config()*
 markdown-table-wrap.get_preview_mode()	markdown-table-wrap.txt	/*markdown-table-wrap.get_preview_mode()*

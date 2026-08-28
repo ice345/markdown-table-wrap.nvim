@@ -4,6 +4,7 @@ local mappings = require("markdown-table-wrap.mappings")
 
 local M = {}
 local namespace = vim.api.nvim_create_namespace("markdown-table-wrap-reader")
+local visual_namespace = vim.api.nvim_create_namespace("markdown-table-wrap-reader-visual")
 local states = {}
 local source_states = {}
 
@@ -192,6 +193,10 @@ local function set_reader_keymaps(reader_bufnr)
     require("markdown-table-wrap.actions").run("help", { bufnr = reader_bufnr })
   end, "Show Markdown table reader help")
 
+  require("markdown-table-wrap.cell_ops").install(function(lhs, callback, description)
+    map(lhs, callback, description)
+  end, reader_bufnr, state)
+
   for lhs, spec in pairs(config.passthrough or {}) do
     local passthrough_lhs = lhs
     local passthrough_spec = spec
@@ -326,6 +331,15 @@ function M.source_bufnr(reader_bufnr)
   return state and state.source_bufnr or vim.b[reader_bufnr].markdown_table_wrap_source
 end
 
+function M.source_changedtick(reader_bufnr)
+  reader_bufnr = normalize_bufnr(reader_bufnr)
+  local state = states[reader_bufnr]
+  if not state or not vim.api.nvim_buf_is_valid(state.source_bufnr) then
+    return nil
+  end
+  return state.source_changedtick
+end
+
 function M.open(source_bufnr, config)
   source_bufnr = normalize_bufnr(source_bufnr)
   if not vim.api.nvim_buf_is_valid(source_bufnr) or M.is_reader(source_bufnr) then
@@ -354,6 +368,7 @@ function M.open(source_bufnr, config)
 
   states[reader_bufnr] = vim.tbl_extend("force", built, {
     source_bufnr = source_bufnr,
+    source_changedtick = vim.api.nvim_buf_get_changedtick(source_bufnr),
     config = config,
     winid = winid,
     source_options = source_options,
@@ -410,6 +425,7 @@ function M.close(reader_bufnr)
   -- Clear only the disposable mirror before switching away from this view.
   vim.bo[reader_bufnr].modified = false
   state.closing = true
+  M.clear_visual_selection(reader_bufnr)
   local switched, switch_err = pcall(vim.api.nvim_win_set_buf, winid, state.source_bufnr)
   if not switched then
     state.closing = false
@@ -498,6 +514,7 @@ function M.refresh(reader_bufnr)
     return false
   end
 
+  M.clear_visual_selection(reader_bufnr)
   local cursor = vim.api.nvim_win_get_cursor(winid)
   local source_lnum = state.reader_to_source[cursor[1]] or 1
   local built = vim.api.nvim_win_call(winid, function()
@@ -514,6 +531,7 @@ function M.refresh(reader_bufnr)
   for key, value in pairs(built) do
     state[key] = value
   end
+  state.source_changedtick = vim.api.nvim_buf_get_changedtick(state.source_bufnr)
 
   configure_window(winid, state.config)
   local reader_lnum = state.source_to_reader[source_lnum] or 1
@@ -558,8 +576,14 @@ function M.refresh_source(source_bufnr)
   end
 
   local refreshed = 0
+  local changedtick = vim.api.nvim_buf_is_valid(source_bufnr) and vim.api.nvim_buf_get_changedtick(source_bufnr) or nil
   for reader_bufnr in pairs(source_state.readers) do
-    if states[reader_bufnr] and M.refresh(reader_bufnr) then
+    if
+      states[reader_bufnr]
+      and changedtick
+      and states[reader_bufnr].source_changedtick ~= changedtick
+      and M.refresh(reader_bufnr)
+    then
       refreshed = refreshed + 1
     end
   end
@@ -583,6 +607,7 @@ function M.abandon(reader_bufnr)
   end
 
   if vim.api.nvim_buf_is_valid(reader_bufnr) then
+    M.clear_visual_selection(reader_bufnr)
     vim.bo[reader_bufnr].modified = false
     vim.b[reader_bufnr].markdown_table_wrap_reader = nil
     vim.b[reader_bufnr].markdown_table_wrap_source = nil
@@ -614,6 +639,7 @@ end
 function M.cleanup(reader_bufnr)
   local state = states[reader_bufnr]
   if state then
+    M.clear_visual_selection(reader_bufnr)
     restore_window(state)
     states[reader_bufnr] = nil
     release_source(state, reader_bufnr)
@@ -627,6 +653,7 @@ function M.cleanup(reader_bufnr)
     for _, dependent in ipairs(readers) do
       local dependent_bufnr = dependent
       local dependent_state = states[dependent_bufnr]
+      M.clear_visual_selection(dependent_bufnr)
       restore_window(dependent_state)
       states[dependent_bufnr] = nil
       if vim.api.nvim_buf_is_valid(dependent_bufnr) then
@@ -665,8 +692,204 @@ function M.source_position(reader_bufnr, winid)
   return { state.source_bufnr, lnum, col }
 end
 
+local function same_cell(left, right)
+  return left
+    and right
+    and left.table_id == right.table_id
+    and left.row_index == right.row_index
+    and left.column_index == right.column_index
+end
+
+function M.cell_at_cursor(reader_bufnr, winid)
+  reader_bufnr = normalize_bufnr(reader_bufnr)
+  local state = states[reader_bufnr]
+  if not state then
+    return nil
+  end
+
+  winid = winid or state.winid
+  if not winid or not vim.api.nvim_win_is_valid(winid) or vim.api.nvim_win_get_buf(winid) ~= reader_bufnr then
+    winid = vim.fn.win_findbuf(reader_bufnr)[1]
+  end
+  if not winid or not vim.api.nvim_win_is_valid(winid) then
+    return nil
+  end
+
+  local cursor = vim.api.nvim_win_get_cursor(winid)
+  local line_object = state.line_objects[cursor[1]]
+  if type(line_object) ~= "table" then
+    return nil
+  end
+
+  local current
+  for _, cell in ipairs(line_object.cells or {}) do
+    if cursor[2] >= cell.start_col and cursor[2] < cell.end_col then
+      current = cell
+      break
+    end
+  end
+  if not current then
+    return nil
+  end
+
+  local start_row
+  local end_row
+  local start_col = current.start_col
+  local end_col = current.end_col
+  for row, object in ipairs(state.line_objects) do
+    if type(object) == "table" then
+      for _, cell in ipairs(object.cells or {}) do
+        if same_cell(cell, current) then
+          start_row = start_row and math.min(start_row, row) or row
+          end_row = end_row and math.max(end_row, row) or row
+          start_col = math.min(start_col, cell.start_col)
+          end_col = math.max(end_col, cell.end_col)
+        end
+      end
+    end
+  end
+
+  return {
+    source_bufnr = state.source_bufnr,
+    winid = winid,
+    table_id = current.table_id,
+    row_index = current.row_index,
+    column_index = current.column_index,
+    source_span = vim.deepcopy(current.source_span),
+    present = current.present ~= false,
+    text = current.text,
+    render_start_row = start_row or cursor[1],
+    render_end_row = end_row or cursor[1],
+    render_start_col = start_col,
+    render_end_col = end_col,
+  }
+end
+
+function M.focus_source_cell(reader_bufnr, source_lnum, column_index, table_id)
+  reader_bufnr = normalize_bufnr(reader_bufnr)
+  local state = states[reader_bufnr]
+  if not state then
+    return false
+  end
+  local winid = state.winid
+  if not winid or not vim.api.nvim_win_is_valid(winid) or vim.api.nvim_win_get_buf(winid) ~= reader_bufnr then
+    winid = vim.fn.win_findbuf(reader_bufnr)[1]
+  end
+  if not winid or not vim.api.nvim_win_is_valid(winid) then
+    return false
+  end
+
+  for row, object in ipairs(state.line_objects) do
+    if type(object) == "table" then
+      for _, cell in ipairs(object.cells or {}) do
+        local span = cell.source_span
+        if
+          span
+          and span.start_lnum == source_lnum
+          and cell.column_index == column_index
+          and (not table_id or cell.table_id == table_id)
+        then
+          vim.api.nvim_win_set_cursor(winid, { row, cell.start_col })
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
+function M.clear_visual_selection(reader_bufnr)
+  reader_bufnr = normalize_bufnr(reader_bufnr)
+  if vim.api.nvim_buf_is_valid(reader_bufnr) then
+    vim.api.nvim_buf_clear_namespace(reader_bufnr, visual_namespace, 0, -1)
+  end
+end
+
+local function visual_bounds(reader_bufnr, winid)
+  local mode = vim.api.nvim_get_mode().mode
+  if not mode:match("^[vV\22]") then
+    return nil
+  end
+
+  local state = states[reader_bufnr]
+  if not state then
+    return nil
+  end
+  local anchor = vim.fn.getpos("v")
+  if type(anchor) ~= "table" then
+    return nil
+  end
+  -- getpos() returns {bufnum, lnum, col, off}; unlike nvim_win_get_cursor(),
+  -- its line and column fields are 1-based.  A zero buffer number means the
+  -- current buffer, so only reject an explicit anchor from another buffer.
+  if anchor[1] and anchor[1] ~= 0 and anchor[1] ~= reader_bufnr then
+    return nil
+  end
+  local anchor_lnum = anchor[2]
+  local anchor_col = math.max((anchor[3] or 1) - 1, 0)
+  local cursor = vim.api.nvim_win_get_cursor(winid)
+  local first_lnum = math.min(anchor_lnum, cursor[1])
+  local last_lnum = math.max(anchor_lnum, cursor[1])
+  local first_col
+  local last_col
+  if mode == "V" then
+    first_col = 0
+    last_col = math.huge
+  elseif anchor_lnum < cursor[1] then
+    first_col = anchor_col
+    last_col = cursor[2]
+  elseif cursor[1] < anchor_lnum then
+    first_col = cursor[2]
+    last_col = anchor_col
+  else
+    first_col = math.min(anchor_col, cursor[2])
+    last_col = math.max(anchor_col, cursor[2])
+  end
+  return mode, first_lnum, last_lnum, first_col, last_col
+end
+
+function M.update_visual_selection(reader_bufnr, winid)
+  reader_bufnr = normalize_bufnr(reader_bufnr)
+  M.clear_visual_selection(reader_bufnr)
+  if not states[reader_bufnr] then
+    return false
+  end
+
+  winid = winid or states[reader_bufnr].winid
+  if not winid or not vim.api.nvim_win_is_valid(winid) or vim.api.nvim_win_get_buf(winid) ~= reader_bufnr then
+    return false
+  end
+  local mode, first_lnum, last_lnum, first_col, last_col = visual_bounds(reader_bufnr, winid)
+  if not mode then
+    return false
+  end
+
+  local priority = math.max((states[reader_bufnr].config.overlay_priority or 10000) + 1, 10001)
+  for lnum = first_lnum, last_lnum do
+    local line = vim.api.nvim_buf_get_lines(reader_bufnr, lnum - 1, lnum, false)[1] or ""
+    local blockwise = mode == "\22"
+    local start_col = mode == "V" and 0 or (blockwise and first_col or (lnum == first_lnum and first_col or 0))
+    local end_col = mode == "V" and #line or (blockwise and last_col or (lnum == last_lnum and last_col or #line))
+    end_col = math.min(#line, math.max(start_col, end_col + 1))
+    if end_col > start_col then
+      vim.api.nvim_buf_set_extmark(reader_bufnr, visual_namespace, lnum - 1, start_col, {
+        virt_text = { { line:sub(start_col + 1, end_col), "Visual" } },
+        virt_text_pos = "overlay",
+        hl_mode = "replace",
+        right_gravity = false,
+        priority = priority,
+      })
+    end
+  end
+  return true
+end
+
 function M.namespace()
   return namespace
+end
+
+function M.visual_namespace()
+  return visual_namespace
 end
 
 function M._build(source_bufnr, config)

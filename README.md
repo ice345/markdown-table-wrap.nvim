@@ -2,7 +2,7 @@
 
 A Neovim/LazyVim plugin for rendering Markdown pipe tables with wrapped cell content.
 
-It does not modify the Markdown source buffer and does not fork or patch `render-markdown.nvim`. It provides three display modes: a stable full-document reader, a source-position-preserving inline overlay, and a floating preview.
+Automatic rendering never modifies the Markdown source buffer and does not fork or patch `render-markdown.nvim`. Explicit Source-aware cell mappings can edit one selected cell by design. The plugin provides three display modes: a stable full-document reader, a source-position-preserving inline overlay, and a floating preview.
 
 ## Why
 
@@ -59,12 +59,15 @@ Floating preview for long table reading:
 - Theme presets for Tokyo Night, Catppuccin, a neutral default, and a render-markdown-inspired palette.
 - Supports inline custom themes and loading custom theme files from a theme directory.
 - Provides source-aware table cell navigation commands.
+- Provides Source-aware Reader cell mappings: `yic`, `vic`, `dic`, `cic`,
+  `cip`, and contextual `c`; native Visual selections remain visible.
 - Provides inline viewport scrolling for rendered rows that exceed the original source table height.
 - Can also render the same table in a floating window.
 - Provides a full-document reader that renders every supported table without requiring cursor focus.
 - Provides `:MarkdownTableToggleInline` for quickly switching between source and inline rendering.
 - Leaves the existing `gx` mapping untouched by default; table-aware source-buffer link handling is opt-in.
-- Does not edit the source buffer.
+- Keeps automatic rendering read-only; explicit Reader cell operations are the
+  only built-in Reader-local path that mutates a guarded Source cell.
 - No external binaries.
 - Neovim 0.10+.
 
@@ -144,6 +147,15 @@ return {
           help = false,
           insert = { "i", "a", "I", "A", "o", "O" },
           passthrough = {},
+          cell = {
+            enabled = true,
+            yank = "yic",
+            visual = "vic",
+            delete = "dic",
+            change = "cic",
+            put = "cip",
+            change_operator = "c",
+          },
         },
         float = {
           enabled = true,
@@ -203,6 +215,8 @@ earlier behavior of opening Reader for every supported buffer.
 
 Reader contains the complete document and fully rendered tables. No table needs
 cursor focus, and the source buffer remains untouched in the background.
+Rendering itself is read-only; the explicit cell mappings described below are
+the guarded exception for editing one Source cell.
 Reader protects those finished table rows from being interpreted as Markdown a
 second time. Characters such as `_` and `<...>` inside rendered code therefore
 remain literal and cannot shift a wrapped border, while search and yank still
@@ -212,6 +226,9 @@ The default interaction model is:
 
 - Normal mode stays in Reader and shows the rendered document.
 - `v`, `V`, and `<C-v>` select real Reader lines. Yanked text is exactly the rendered content, and the view remains in Reader after copying.
+- Inside a rendered table cell, `yic` yanks the original Markdown cell source (for example, `[GitHub](https://github.com)`), `vic` selects the complete logical cell across wrapped lines, `dic` clears only that cell, `cic` clears it and enters Source Insert, and `cip` replaces it with the unnamed register. `dic`/`cic` put the removed source in the unnamed register like a normal Vim change/delete. These operations never rewrite the row's other cells or pipe delimiters. Cell changes are short Source hops and normally let Reader reopen after `InsertLeave`.
+- `c` has the same Source-cell change behavior when the cursor is inside a table cell. Outside a cell it safely delegates to the captured Source mapping or native Vim change command.
+- Native `v`, `V`, and `<C-v>` remain native selections. Reader adds a visible `Visual` overlay so selection is still obvious on rendered table cells; it does not turn them into source-text selections.
 - `i`, `a`, `I`, `A`, `o`, and `O` switch to the mapped source line for editing. Reader reopens after `InsertLeave`.
 - `:w`, `:wq`, `:x`, and `ZZ` save the backing Markdown source directly. The rendered buffer itself is never written to disk; `:wq` then quits as usual.
 - `:MarkdownTableToggleReader` switches between Reader and Source. Closing Reader pauses automatic reopening until the command is run again.
@@ -281,10 +298,11 @@ For daily use, five actions cover the normal workflow:
 - Learn: `:MarkdownTableHelp` shows the configured view keys and command-based
   exit path, including when local Reader mappings are disabled.
 
-Reader copies rendered Unicode lines; Source and Inline copy the original
-Markdown. Reader search operates on rendered text. File navigation and buffer
-transitions resolve back to Source, while structural edits should be performed
-in Source.
+Reader's native Visual/yank copies rendered Unicode lines; `yic` and the other
+cell mappings deliberately operate on the original Source span. Source and
+Inline native copy remains Markdown source. Reader search operates on rendered
+text. File navigation and buffer transitions resolve back to Source, while
+structural edits should be performed in Source.
 
 ### Why Reader Avoids Wrap Leaks
 
@@ -307,7 +325,7 @@ require("markdown-table-wrap").setup({
 })
 ```
 
-Press `e`, `q`, or run `:MarkdownTableEditSource` to leave reader mode and keep the source visible. To copy the original Markdown syntax instead of rendered text, toggle to Source first and use Visual mode there.
+Press `e`, `q`, or run `:MarkdownTableEditSource` to leave reader mode and keep the source visible. For a whole-cell source operation, use the Reader cell mappings above; for arbitrary source structure, toggle to Source and use normal Visual mode there.
 
 ### Coexisting With render-markdown.nvim
 
@@ -496,7 +514,10 @@ Options:
   `mappings.reader = false` to install no Reader-local mappings; commands and
   `<Plug>` actions remain available. `mappings.reader.passthrough` accepts a
   stable action name or `{ policy = "leave" | "source" | "view" }` for an
-  explicitly captured Source mapping.
+  explicitly captured Source mapping. `mappings.reader.cell` controls the
+  Source-aware Reader cell mappings (`yic`, `vic`, `dic`, `cic`, `cip`, and
+  `c`); set it to `false` or `{ enabled = false }` to disable them, or replace
+  individual keys with your own mappings.
 - `link`: icon configuration plus an optional `resolver(target, context,
   strategy)` callback. Return `true`/`"noop"` when handled, `false` to cancel,
   or `"edit"`, `"split"`, `"vsplit"`, or `"tab"` to choose built-in file
@@ -711,6 +732,8 @@ The current rendering model includes:
 - Automatic rendering of every supported table without cursor focus.
 - Command-free workflow: edit Source in Insert mode and view rendered content in Normal mode.
 - Visual selection of real Reader lines, with Reader retained after yank.
+- Source-aware Reader cell operations: `yic`, `vic`, `dic`, `cic`, `cip`, and
+  `c`, with visible selection feedback for native `v`/`V`/`<C-v>`.
 - Cached refreshes to avoid unnecessary redraw flicker.
 - Window-local conceal handling with restoration on clear.
 - Semantic highlights for borders, headers, inline code, and links.

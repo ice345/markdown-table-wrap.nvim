@@ -96,6 +96,16 @@
 ---@field help? MarkdownTableWrapMappingKey
 ---@field insert? string[]
 ---@field passthrough? table<string, string|table>
+---@field cell? MarkdownTableWrapCellMappings|false
+
+---@class MarkdownTableWrapCellMappings
+---@field enabled? boolean
+---@field yank? MarkdownTableWrapMappingKey
+---@field visual? MarkdownTableWrapMappingKey
+---@field delete? MarkdownTableWrapMappingKey
+---@field change? MarkdownTableWrapMappingKey
+---@field put? MarkdownTableWrapMappingKey
+---@field change_operator? MarkdownTableWrapMappingKey
 
 ---@class MarkdownTableWrapFloatMappings
 ---@field enabled? boolean

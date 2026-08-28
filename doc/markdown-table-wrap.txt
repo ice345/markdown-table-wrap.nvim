@@ -17,15 +17,16 @@ CONTENTS                                      *markdown-table-wrap-contents*
 OVERVIEW                                      *markdown-table-wrap-overview*
 
 markdown-table-wrap.nvim renders Markdown pipe tables with wrapped cell
-content. It does not modify the source Markdown buffer. The default display
-mode is a full-document Reader. Source-position-preserving inline replacement
-and a floating preview remain available as optional modes.
+content. Automatic rendering does not modify the source Markdown buffer; the
+explicit Source-aware Reader cell mappings are the guarded editing exception.
+The default display mode is a full-document Reader. Source-position-preserving
+inline replacement and a floating preview remain available as optional modes.
 
 READER MODE
 
 Reader mode mirrors the document into a protected scratch buffer and replaces
-every supported top-level pipe table with real Unicode buffer lines. It never
-modifies the source Markdown buffer. With auto_preview enabled, the default
+every supported top-level pipe table with real Unicode buffer lines. Rendering
+never modifies the source Markdown buffer. With auto_preview enabled, the default
 reader.auto_open value "has_table" opens Reader only after a table is
 detected.
 Plain Markdown remains in Source. Set reader.auto_open to "always" to open
@@ -49,6 +50,21 @@ Default interaction:
 
 - Normal mode stays in Reader.
 - v/V/CTRL-V select real rendered lines. Yank keeps Reader active.
+- Inside a rendered table cell, |markdown-table-wrap-yic| yanks the original
+  Markdown source, |markdown-table-wrap-vic| selects the complete logical cell
+  across wrapped lines, |markdown-table-wrap-dic| clears only that cell,
+  |markdown-table-wrap-cic| clears it and enters Source Insert, and
+  |markdown-table-wrap-cip| replaces
+  it with the unnamed register. dic/cic put the removed source in the unnamed
+  register like a normal Vim change/delete. These operations preserve the row's other
+  cells and pipe delimiters. Cell changes are short Source hops and normally
+  allow Reader to reopen after InsertLeave.
+- |markdown-table-wrap-cell-change| has the same Source-cell change behavior
+  inside a cell. Outside a cell
+  it delegates to the captured Source mapping or native Vim change command.
+- Native v/V/CTRL-V behavior is unchanged. Reader adds a visible Visual
+  overlay so selections remain obvious on rendered table cells; the overlay
+  does not change what native Visual mode selects.
 - i/a/I/A/o/O switch to the corresponding source line for editing. Reader
   reopens after InsertLeave.
 - :w, :wq, :x, and ZZ save the backing Markdown source directly. The rendered
@@ -63,6 +79,38 @@ Default interaction:
   disable actions keep their persistent pause semantics.
   see |markdown-table-wrap-map-gx|.
 
+CELL OPERATIONS                              *markdown-table-wrap-cell-operations*
+
+The Reader cell mappings operate on one logical table cell even when the
+rendered value occupies several wrapped Reader lines. Markdown semantics are
+always taken from the exact Source range, never reconstructed from displayed
+text:
+
+  yic  *markdown-table-wrap-yic*          Yank the raw Source cell into the
+                                          unnamed and yank registers.
+  vic  *markdown-table-wrap-vic*          Enter Visual mode over every rendered
+                                          segment of the logical cell.
+  dic  *markdown-table-wrap-dic*          Clear only the Source cell content and
+                                          put the removed source in the unnamed
+                                          register.
+  cic  *markdown-table-wrap-cic*          Clear the Source cell, leave Reader,
+                                          and enter Insert mode at the Source
+                                          range; Reader normally reopens after
+                                          InsertLeave.
+  cip  *markdown-table-wrap-cip*          Replace the Source cell with the
+                                          unnamed register (register newlines
+                                          become spaces).
+  c    *markdown-table-wrap-cell-change*  Behave like cic inside a cell;
+                                          outside a cell delegate to the
+                                          captured Source mapping or native Vim
+                                          change.
+
+The mappings are enabled by default and can be changed under
+|markdown-table-wrap-mappings|. Set mappings.reader.cell to false or
+{ enabled = false } to disable them. Mutations are intentionally limited to a
+single physical Source line and refuse synthetic missing cells, so a malformed
+row is never rewritten implicitly.
+
 VIEW CHOICE                                  *markdown-table-wrap-view-choice*
 
 Use Source for structural editing such as dd, Visual changes, moving rows, or
@@ -74,8 +122,8 @@ reading; its i/a/o/e editing commands jump to the mapped Source line.
 it first returns to Source and then enables Inline. Press it again to clear
 Inline and leave Source visible.
 
-To copy original Markdown syntax rather than the rendered table, toggle to
-Source first and use Visual mode there.
+For arbitrary source structure, toggle to Source and use normal Visual mode.
+For a logical table cell, use the Source-aware Reader mappings above.
 
 When optional inline mode is selected, complete-table rendering remains the
 default and viewport slicing remains disabled.
@@ -352,6 +400,15 @@ Default setup:
         help = false,
         insert = { "i", "a", "I", "A", "o", "O" },
         passthrough = {},
+        cell = {
+          enabled = true,
+          yank = "yic",
+          visual = "vic",
+          delete = "dic",
+          change = "cic",
+          put = "cip",
+          change_operator = "c",
+        },
       },
       float = {
         enabled = true,
@@ -485,6 +542,15 @@ mappings~                              *markdown-table-wrap-mappings*
     may name a plugin action such as "next_buffer", or use a table containing
     policy = "leave", "source", or "view". No passthrough is installed by
     default.
+
+    mappings.reader.cell controls Source-aware operations on the logical cell
+    under the Reader cursor. Its defaults are yic (raw Source yank), vic
+    (logical rendered-cell Visual selection), dic (clear Source content), cic
+    (clear and enter Source Insert), cip (replace with the unnamed register),
+    and c (cell change, with Source/native fallback outside a cell). Set the
+    value to false or { enabled = false } to disable all six mappings. A cell
+    mutation is restricted to one physical Source line; register newlines are
+    flattened to spaces so table row structure remains valid.
 >
       mappings = {
         reader = {

@@ -57,6 +57,15 @@ local defaults = {
       help = false,
       insert = { "i", "a", "I", "A", "o", "O" },
       passthrough = {},
+      cell = {
+        enabled = true,
+        yank = "yic",
+        visual = "vic",
+        delete = "dic",
+        change = "cic",
+        put = "cip",
+        change_operator = "c",
+      },
     },
     float = {
       enabled = true,
@@ -255,6 +264,15 @@ local function validate_config()
   end
   if type(M.config.mappings.reader.passthrough) ~= "table" then
     M.config.mappings.reader.passthrough = {}
+  end
+  if M.config.mappings.reader.cell == false then
+    M.config.mappings.reader.cell = { enabled = false }
+  elseif type(M.config.mappings.reader.cell) ~= "table" then
+    M.config.mappings.reader.cell = vim.deepcopy(defaults.mappings.reader.cell)
+  else
+    M.config.mappings.reader.cell =
+      vim.tbl_deep_extend("force", vim.deepcopy(defaults.mappings.reader.cell), M.config.mappings.reader.cell)
+    M.config.mappings.reader.cell.enabled = M.config.mappings.reader.cell.enabled ~= false
   end
   if
     M.config.mappings.float.close ~= false
@@ -960,6 +978,11 @@ local function create_autocmds()
   vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
     group = M.state.augroup,
     callback = function(args)
+      local reader = require("markdown-table-wrap.reader")
+      if reader.is_reader(args.buf) then
+        reader.update_visual_selection(args.buf)
+        return
+      end
       if not is_markdown_buffer(args.buf) then
         return
       end
@@ -1028,6 +1051,11 @@ local function create_autocmds()
     group = M.state.augroup,
     callback = function(args)
       local bufnr = args.buf
+      local reader = require("markdown-table-wrap.reader")
+      if reader.is_reader(bufnr) then
+        reader.update_visual_selection(bufnr)
+        return
+      end
       if not is_markdown_buffer(bufnr) or config_for_buffer(bufnr).clear_on_visual == false then
         return
       end
@@ -1059,6 +1087,11 @@ local function create_autocmds()
   vim.api.nvim_create_autocmd({ "BufLeave", "WinLeave" }, {
     group = M.state.augroup,
     callback = function(args)
+      local reader = require("markdown-table-wrap.reader")
+      if reader.is_reader(args.buf) then
+        reader.clear_visual_selection(args.buf)
+        return
+      end
       require("markdown-table-wrap.inline").detach_window(vim.api.nvim_get_current_win())
       local config = config_for_buffer(args.buf)
       if config.render_all then

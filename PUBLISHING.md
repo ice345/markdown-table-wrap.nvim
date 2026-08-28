@@ -9,8 +9,9 @@ rename its development branch as part of a release.
 - Repository: `ice345/markdown-table-wrap.nvim`
 - Remote: `origin` (`git@github.com:ice345/markdown-table-wrap.nvim.git`)
 - Development/release branch: `master`
-- Latest published tag before this release: `v0.3.0`
-- Next planned release: `v0.4.0`
+- Latest published tag: `v0.4.0`
+- Next planned release: `v0.5.0` (Source-aware Reader cell operations are
+  currently tracked under `CHANGELOG.md` Unreleased)
 - Supported Neovim baseline: 0.10+
 
 Verify these values rather than assuming the local checkout is current:
@@ -23,10 +24,12 @@ git status --short
 git tag --sort=-version:refname | head
 ```
 
-Release only from `master`, with no unrelated local changes, after the branch is
-up to date with `origin/master`.
+The v0.4.0 section below is the retained release record and checklist example.
+For a future release, substitute the target version and milestone scope from
+the maintainer-local `ROADMAP.md`. Release only from `master`, with no
+unrelated local changes, after the branch is up to date with `origin/master`.
 
-## 1. Freeze The Release Scope
+## Historical v0.4.0 Checklist
 
 Before preparing v0.4.0:
 
