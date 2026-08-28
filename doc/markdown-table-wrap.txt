@@ -105,6 +105,17 @@ text:
                                           captured Source mapping or native Vim
                                           change.
 
+These mappings use Vim's normal text-object phases rather than relying on a
+Normal-mode mapping that starts with an operator. In practice yic and dic are
+resolved as y + ic and d + ic while an operator is pending, and vic is
+resolved as v + ic in Visual mode. cic/cip retain their complete Normal-mode
+aliases while the contextual c mapping is installed, and also expose c + ic
+and c + ip operator-pending fallbacks when that mapping is customized or
+disabled. This keeps real keyboard input reliable even when timeoutlen is
+short. After vic, a Visual-mode yank copies only the rendered logical cell segments,
+without neighboring columns or pipe borders; yic remains the raw Source
+operation.
+
 The mappings are enabled by default and can be changed under
 |markdown-table-wrap-mappings|. Set mappings.reader.cell to false or
 { enabled = false } to disable them. Mutations are intentionally limited to a

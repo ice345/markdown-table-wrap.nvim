@@ -133,10 +133,10 @@ mutation boundary for the Reader cell mappings:
 ```text
 Reader cursor → logical rendered cell → Source span
        │                  │                 │
-       ├─ yic ────────────┴─ read raw text → registers
-       ├─ vic ─────────────── select rendered segments (Visual overlay)
-       ├─ dic/cip ─────────── nvim_buf_set_text(Source span) → refresh Reader
-       └─ cic/c ───────────── set empty Source span → close Reader → Source Insert
+       ├─ y + ic ─────────┴─ read raw text → registers
+       ├─ v + ic ─────────── select rendered segments (Visual overlay)
+       ├─ d/c + ic, c + ip ─ nvim_buf_set_text(Source span) → refresh Reader
+       └─ c (contextual) ─── set empty Source span → close Reader → Source Insert
 ```
 
 `yic` copies the source slice, not the displayed label. `dic`, `cic`, and
@@ -146,18 +146,26 @@ multi-line or synthetic missing cells are rejected rather than causing an
 implicit row rewrite. A changedtick check refreshes a stale Reader projection
 before resolving a cell.
 
-`vic` enters native blockwise Visual mode over the rendered cell's first and
-last real lines. Blockwise selection is deliberate: charwise Visual would
-include every column on intermediate wrapped lines. Native `v`, `V`, and block
-Visual remain unchanged; `reader.lua` mirrors
+`vic` is installed as the `ic` Visual-mode text-object suffix after `v`, while
+the operator forms use `ic`/`ip` in operator-pending mode. This matters because
+a Normal-mode mapping whose lhs starts with `y`, `d`, or `v` loses to Vim's
+operator/Visual state during real keyboard input. Native blockwise Visual mode
+is still used over the rendered cell's first and last real lines. Blockwise
+selection is deliberate: charwise Visual would include every column on
+intermediate wrapped lines. Native `v`, `V`, and block Visual remain unchanged;
+`reader.lua` mirrors
 their active range into a higher-priority `Visual` virtual-text overlay because
 the base table overlay otherwise hides the terminal's normal selection
 feedback. The overlay namespace is cleared on movement out of Visual, Reader
-close/abandon, and buffer cleanup. It affects appearance only and never changes
-the register contents or Source selection semantics. In normal mode it adds no
-per-cell extmarks; only the currently selected Reader lines are overlaid, so
-large Readers retain the v0.4 one-authoritative-extmark-per-rendered-line
-baseline.
+close/abandon, and buffer cleanup. For a `vic` selection, the overlay uses each
+rendered segment's own byte range instead of one shared rectangle; this keeps
+CJK, wide icons, and variable UTF-8 byte lengths from highlighting the next
+column's border. Its temporary Visual `y` mapping copies the logical rendered
+segments without borders and then restores any previous Visual mapping. The
+overlay affects appearance only and never changes the Source selection
+semantics. In normal mode it adds no per-cell extmarks; only the currently
+selected Reader lines are overlaid, so large Readers retain the v0.4
+one-authoritative-extmark-per-rendered-line baseline.
 
 ## Rendered Copy And Export
 

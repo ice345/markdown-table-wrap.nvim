@@ -35,10 +35,12 @@ plugins' extmarks are outside a headless process:
 3. Test with `render-markdown.nvim` loaded and its pipe-table renderer disabled.
 4. Test code-wrapped link/image labels such as ``[`overview`](path.md)`` and
    confirm Inline separators stay aligned.
-5. In Reader, test `yic` on a wrapped link/code cell and confirm the register
-   contains raw Markdown; test `vic`, native `v`/`V`/`<C-v>`, `dic`, `cic`,
-   `cip`, and `c` on both a cell and ordinary prose. Confirm `c` delegates to
-   the user's Source mapping outside cells.
+5. In Reader, test real typed `yic` on a wrapped link/code cell and confirm the
+   register contains raw Markdown; test `vic` followed by `y` and confirm the
+   register contains only the rendered logical cell, with no neighboring text
+   or `│` borders. Test native `v`/`V`/`<C-v>`, `dic`, `cic`, `cip`, and `c` on
+   both a cell and ordinary prose. Use CJK text and link icons, and confirm
+   `c` delegates to the user's Source mapping outside cells.
 6. Test `gx`, `:w`, `:wq`, `:x`, and `ZZ` from Reader against a real file.
 7. Test `:MarkdownTableYankCell`, `:MarkdownTableYankTable`, and
    `:MarkdownTableExport[!] [tsv|csv]` in Source, Inline, and Reader. Confirm

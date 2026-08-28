@@ -1191,6 +1191,10 @@ local function create_autocmds()
       local bufnr = args.buf
       local reader = require("markdown-table-wrap.reader")
       if reader.is_reader(bufnr) then
+        local mode = vim.api.nvim_get_mode().mode
+        if not mode:match("^[vV\22]") then
+          require("markdown-table-wrap.cell_ops").clear_visual(bufnr)
+        end
         reader.update_visual_selection(bufnr)
         reader.update_sticky_header(bufnr)
         return
@@ -1228,6 +1232,7 @@ local function create_autocmds()
     callback = function(args)
       local reader = require("markdown-table-wrap.reader")
       if reader.is_reader(args.buf) then
+        require("markdown-table-wrap.cell_ops").clear_visual(args.buf)
         reader.clear_visual_selection(args.buf)
         return
       end
@@ -1250,6 +1255,7 @@ local function create_autocmds()
   vim.api.nvim_create_autocmd("BufWipeout", {
     group = M.state.augroup,
     callback = function(args)
+      require("markdown-table-wrap.cell_ops").clear_visual(args.buf)
       require("markdown-table-wrap.reader").cleanup(args.buf)
       require("markdown-table-wrap.inline").dispose(args.buf)
       require("markdown-table-wrap.cache").clear_buffer(args.buf)

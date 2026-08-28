@@ -10,13 +10,26 @@ local function source_lines()
   }
 end
 
+local function comparison_lines()
+  return {
+    "A paragraph outside the table.",
+    "",
+    "| 工具名称 | 主要功能 | 支持平台 | 优点 | 缺点 / 注意事项 | 适用场景 |",
+    "| :--- | :--- | :--- | :--- | :--- | :--- |",
+    "| **CrossOver** | 在 Mac/Linux 上运行 Windows 应用，基于 [Wine](https://www.winehq.org/)，无需安装 Windows 系统 | macOS、Linux | 资源占用低，与系统深度融合（如可以直接打开 `.exe` 文件），M 系列 Mac 性能较好 | 并非所有 Windows 软件都能完美运行，尤其是依赖反作弊系统的网游；需要一定的配置调整（如开启 D3DMetal） | Mac 用户偶尔运行 Windows 软件或老游戏 |",
+    "| **Proton** | Steam 内置的兼容层，基于 Wine，专为 Linux 平台运行 Windows 游戏而开发 | Linux（Steam Deck 原生支持） | 与 Steam 深度集成，无需额外配置即可运行大部分 Windows 游戏；Valve 持续维护更新；对游戏手柄和全屏优化较好 | 仅限 Steam 平台游戏（非 Steam 游戏需要手动添加）；仅支持 Linux，Mac 用户无法使用；某些反作弊游戏仍然不兼容 | Linux 桌面玩家或 Steam Deck 用户 |",
+    "| **Wine** | 开源的兼容层，将 Windows API 调用实时转换为 POSIX 调用，让 Linux/macOS 原生运行 Windows 程序 | macOS、Linux、BSD | 完全免费开源，社区活跃，高度可定制，没有任何商业限制；是 CrossOver 和 Proton 的底层技术核心 | 配置复杂，需要命令行操作和手动调整 DLL、注册表等；对新游戏或大型应用的支持滞后；几乎没有图形化界面 | 愿意投入时间折腾的高级用户 |",
+    "| **Parallels Desktop** | Mac 上的高性能虚拟机，可以直接运行完整的 Windows 11 系统，支持融合模式（Coherence）无缝运行 Windows 应用 | macOS（Apple Silicon 和 Intel） | 兼容性最好，几乎可以运行所有 Windows 程序（包括依赖反作弊的游戏和企业级软件）；硬件虚拟化加速优秀；支持 DirectX 12 和 OpenGL | 资源消耗大（需要分配内存和 CPU 核心）；价格较高（订阅制或一次性买断较贵）；占用硬盘空间较大（需要完整的 Windows 镜像） | 需要频繁运行多种 Windows 软件或游戏，且对兼容性要求极高，愿意为稳定和易用付费的用户 |",
+  }
+end
+
 local function delete_buffer(bufnr)
   if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
     vim.api.nvim_buf_delete(bufnr, { force = true })
   end
 end
 
-local function open_reader(width)
+local function open_reader(width, lines)
   local plugin = require("markdown-table-wrap")
   plugin.setup({
     auto_preview = false,
@@ -30,7 +43,7 @@ local function open_reader(width)
   vim.bo[source_bufnr].buftype = "nofile"
   vim.bo[source_bufnr].swapfile = false
   vim.bo[source_bufnr].filetype = "markdown"
-  vim.api.nvim_buf_set_lines(source_bufnr, 0, -1, false, source_lines())
+  vim.api.nvim_buf_set_lines(source_bufnr, 0, -1, false, lines or source_lines())
   vim.api.nvim_set_current_buf(source_bufnr)
   vim.api.nvim_win_set_width(0, width or 72)
   local reader_bufnr = plugin.reader_preview()
@@ -80,6 +93,35 @@ h.test("yic copies the original Markdown source of a wrapped cell", function()
   close_and_delete(plugin, source_bufnr)
 end)
 
+h.test("typed yic and vic handle CJK/link cells without border leakage", function()
+  local plugin, source_bufnr, reader_bufnr = open_reader(48, comparison_lines())
+  local link_cell = position_on_cell(reader_bufnr, 5, 2)
+  h.assert_true("comparison link cell is found", link_cell ~= nil)
+  vim.fn.setreg('"', "")
+  vim.fn.feedkeys("yic", "xt")
+  vim.wait(80)
+  h.assert_eq(
+    "typed yic copies exact link source",
+    vim.fn.getreg('"'),
+    "在 Mac/Linux 上运行 Windows 应用，基于 [Wine](https://www.winehq.org/)，无需安装 Windows 系统"
+  )
+
+  local visual_cell = position_on_cell(reader_bufnr, 5, 5)
+  h.assert_true("comparison long cell is found", visual_cell ~= nil)
+  vim.fn.feedkeys("vic", "xt")
+  vim.wait(80)
+  h.assert_eq("typed vic enters blockwise Visual", vim.api.nvim_get_mode().mode, "\22")
+  vim.fn.setreg('"', "")
+  vim.fn.feedkeys("y", "xt")
+  vim.wait(80)
+  local rendered = vim.fn.getreg('"')
+  h.assert_true("vic yank is non-empty", rendered ~= "")
+  h.assert_false("vic yank excludes vertical borders", rendered:find("│", 1, true) ~= nil)
+  h.assert_false("vic yank excludes neighboring cell text", rendered:find("macOS", 1, true) ~= nil)
+  h.assert_eq("vic yank returns to Normal mode", vim.api.nvim_get_mode().mode, "n")
+  close_and_delete(plugin, source_bufnr)
+end)
+
 h.test("cell operations refresh a stale Reader projection before resolving", function()
   local plugin, source_bufnr, reader_bufnr = open_reader(72)
   h.assert_true("initial cell is found", position_on_cell(reader_bufnr, 5, 2) ~= nil)
@@ -88,6 +130,21 @@ h.test("cell operations refresh a stale Reader projection before resolving", fun
   })
   h.assert_true("stale Reader yic succeeds", require("markdown-table-wrap.cell_ops").yank(reader_bufnr))
   h.assert_eq("stale Reader resolves new Source span", vim.fn.getreg('"'), "[updated source](https://example.com)")
+  close_and_delete(plugin, source_bufnr)
+end)
+
+h.test("typed dic uses the operator-pending cell object without changing neighbors", function()
+  local plugin, source_bufnr, reader_bufnr = open_reader(72)
+  local cell = position_on_cell(reader_bufnr, 5, 2)
+  h.assert_true("cell is found for typed delete", cell ~= nil)
+  vim.fn.setreg('"', "")
+  vim.fn.feedkeys("dic", "xt")
+  vim.wait(80)
+  local line = vim.api.nvim_buf_get_lines(source_bufnr, 4, 5, false)[1]
+  h.assert_true("typed dic clears only the selected source", line:find("| one |  |", 1, true) ~= nil)
+  h.assert_true("typed dic keeps the neighboring cell", line:find("a deliberately long note", 1, true) ~= nil)
+  h.assert_eq("typed dic yanks removed source", vim.fn.getreg('"'), "[GitHub documentation portal](https://github.com)")
+  h.assert_eq("typed dic returns to Normal", vim.api.nvim_get_mode().mode, "n")
   close_and_delete(plugin, source_bufnr)
 end)
 
@@ -107,7 +164,10 @@ h.test("vic selects every rendered segment of one logical cell", function()
   )
   h.assert_eq("vic covers each wrapped cell line", #marks, cell.render_end_row - cell.render_start_row + 1)
   for _, mark in ipairs(marks) do
-    h.assert_eq("vic stays inside the cell rectangle", mark[3], cell.render_start_col)
+    local line = vim.api.nvim_buf_get_lines(reader_bufnr, mark[2], mark[2] + 1, false)[1] or ""
+    local highlighted = mark[4].virt_text[1][1]
+    h.assert_true("vic starts inside each exact cell segment", mark[3] < #line)
+    h.assert_false("vic overlay excludes the following border", highlighted:find("│", 1, true) ~= nil)
     h.assert_eq("vic overlay uses Visual highlight", mark[4].virt_text[1][2], "Visual")
   end
 
@@ -117,6 +177,27 @@ h.test("vic selects every rendered segment of one logical cell", function()
     #vim.api.nvim_buf_get_extmarks(reader_bufnr, require("markdown-table-wrap.reader").visual_namespace(), 0, -1, {}),
     0
   )
+  close_and_delete(plugin, source_bufnr)
+end)
+
+h.test("vic restores an existing Visual y mapping after yank", function()
+  local plugin, source_bufnr, reader_bufnr = open_reader(58)
+  local cell = position_on_cell(reader_bufnr, 5, 3)
+  h.assert_true("cell is found for Visual mapping restore", cell ~= nil)
+
+  vim.keymap.set("x", "y", function() end, {
+    buffer = reader_bufnr,
+    desc = "user visual yank",
+  })
+  h.assert_true(
+    "vic succeeds with a user Visual y mapping",
+    require("markdown-table-wrap.cell_ops").visual(reader_bufnr)
+  )
+  vim.fn.feedkeys("y", "xt")
+  vim.wait(80)
+  local restored = vim.fn.maparg("y", "x", false, true)
+  h.assert_eq("Visual y mapping is restored", restored.desc, "user visual yank")
+  h.assert_eq("Visual yank returns to Normal", vim.api.nvim_get_mode().mode, "n")
   close_and_delete(plugin, source_bufnr)
 end)
 
@@ -241,14 +322,18 @@ h.test("Reader cell mappings are configurable and can be disabled", function()
   for _, mapping in ipairs(mappings) do
     seen[mapping.lhs] = true
   end
-  h.assert_true("default yic mapping is installed", seen.yic)
-  h.assert_true("default vic mapping is installed", seen.vic)
-  h.assert_true("default dic mapping is installed", seen.dic)
-  h.assert_true("default cic mapping is installed", seen.cic)
-  h.assert_true("default cip mapping is installed", seen.cip)
   h.assert_true("default c mapping is installed", seen.c)
+  h.assert_false("operator-prefixed yic is not shadowing Vim's y", seen.yic)
+  h.assert_false("operator-prefixed vic is not shadowing Vim's v", seen.vic)
+  h.assert_false("operator-prefixed dic is not shadowing Vim's d", seen.dic)
+  h.assert_true("contextual c keeps the cic compatibility alias", seen.cic)
+  h.assert_true("contextual c keeps the cip compatibility alias", seen.cip)
+  h.assert_true("cell inner object is installed for operators", vim.fn.maparg("ic", "o", false, true).buffer == 1)
+  h.assert_true("cell inner object is installed for Visual", vim.fn.maparg("ic", "x", false, true).buffer == 1)
   position_on_cell(reader_bufnr, 5, 2)
-  vim.cmd("normal yic")
+  vim.fn.setreg('"', "")
+  vim.fn.feedkeys("yic", "xt")
+  vim.wait(80)
   h.assert_eq(
     "mapped yic copies the raw Source cell",
     vim.fn.getreg('"'),

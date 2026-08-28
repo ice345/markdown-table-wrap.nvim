@@ -181,8 +181,14 @@ local function set_reader_keymaps(reader_bufnr)
     return
   end
 
-  for _, lhs in ipairs(state.installed_mappings or {}) do
-    pcall(vim.keymap.del, "n", lhs, { buffer = reader_bufnr })
+  for _, mapping in ipairs(state.installed_mappings or {}) do
+    if type(mapping) == "table" then
+      pcall(vim.keymap.del, mapping.mode or "n", mapping.lhs, { buffer = reader_bufnr })
+    else
+      -- Keep compatibility with state snapshots produced before mode-aware
+      -- cell text-object mappings were introduced.
+      pcall(vim.keymap.del, "n", mapping, { buffer = reader_bufnr })
+    end
   end
   state.installed_mappings = {}
   state.passthrough_fallbacks = {}
@@ -192,12 +198,19 @@ local function set_reader_keymaps(reader_bufnr)
     return
   end
 
-  local function map(lhs, callback, desc)
+  local function map(lhs, callback, desc, modes)
     if type(lhs) ~= "string" or lhs == "" then
       return
     end
-    vim.keymap.set("n", lhs, callback, { buffer = reader_bufnr, silent = true, desc = desc })
-    table.insert(state.installed_mappings, lhs)
+    modes = modes or "n"
+    vim.keymap.set(modes, lhs, callback, { buffer = reader_bufnr, silent = true, desc = desc })
+    if type(modes) == "table" then
+      for _, mode in ipairs(modes) do
+        table.insert(state.installed_mappings, { mode = mode, lhs = lhs })
+      end
+    else
+      table.insert(state.installed_mappings, { mode = modes, lhs = lhs })
+    end
   end
 
   local function edit(keys, pause)
@@ -252,8 +265,8 @@ local function set_reader_keymaps(reader_bufnr)
     require("markdown-table-wrap.export").table({ bufnr = reader_bufnr })
   end, "Copy rendered Markdown table")
 
-  require("markdown-table-wrap.cell_ops").install(function(lhs, callback, description)
-    map(lhs, callback, description)
+  require("markdown-table-wrap.cell_ops").install(function(lhs, callback, description, modes)
+    map(lhs, callback, description, modes)
   end, reader_bufnr, state)
 
   for lhs, spec in pairs(config.passthrough or {}) do
@@ -968,6 +981,38 @@ local function visual_bounds(reader_bufnr, winid)
   return mode, first_lnum, last_lnum, first_col, last_col
 end
 
+local function update_logical_cell_visual(reader_bufnr, state)
+  local marker = vim.b[reader_bufnr].markdown_table_wrap_cell_visual
+  if type(marker) ~= "table" then
+    return false
+  end
+
+  local key = table.concat({ marker.table_id, marker.row_index, marker.column_index }, ":")
+  local segments = state.cell_segments and state.cell_segments[key] or nil
+  if not segments or #segments == 0 then
+    return false
+  end
+
+  local priority = math.max((state.config.overlay_priority or 10000) + 1, 10001)
+  for _, item in ipairs(segments) do
+    local row = item.row
+    local cell = item.cell
+    local line = vim.api.nvim_buf_get_lines(reader_bufnr, row - 1, row, false)[1] or ""
+    local start_col = math.max(0, math.min(#line, cell.start_col or 0))
+    local end_col = math.max(start_col, math.min(#line, cell.end_col or start_col))
+    if end_col > start_col then
+      vim.api.nvim_buf_set_extmark(reader_bufnr, visual_namespace, row - 1, start_col, {
+        virt_text = { { line:sub(start_col + 1, end_col), "Visual" } },
+        virt_text_pos = "overlay",
+        hl_mode = "replace",
+        right_gravity = false,
+        priority = priority,
+      })
+    end
+  end
+  return true
+end
+
 function M.update_visual_selection(reader_bufnr, winid)
   reader_bufnr = normalize_bufnr(reader_bufnr)
   M.clear_visual_selection(reader_bufnr)
@@ -978,6 +1023,10 @@ function M.update_visual_selection(reader_bufnr, winid)
   winid = winid or states[reader_bufnr].winid
   if not winid or not vim.api.nvim_win_is_valid(winid) or vim.api.nvim_win_get_buf(winid) ~= reader_bufnr then
     return false
+  end
+  local state = states[reader_bufnr]
+  if vim.api.nvim_get_mode().mode == "\22" and update_logical_cell_visual(reader_bufnr, state) then
+    return true
   end
   local mode, first_lnum, last_lnum, first_col, last_col = visual_bounds(reader_bufnr, winid)
   if not mode then
