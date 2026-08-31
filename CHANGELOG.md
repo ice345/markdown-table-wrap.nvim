@@ -2,6 +2,48 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
+## Unreleased
+
+### Fixed
+
+- Guard Reader's `y` and `d` cell prefixes so mistyped motions such as
+  `yj`/`yk` cannot yank rendered borders and `dj`/`dk`/`dd` cannot raise E21;
+  cancellation preserves the cursor, registers, Reader, and Source.
+- Make Reader `cic` leave and revalidate the canonical Source before clearing
+  the cell, so a failed Reader transition or concurrent Source change cannot
+  apply a partial or stale edit.
+- Delegate `yic`, `dic`, and `cic` to native operations on the exact Source
+  span so selected registers, the small-delete register, black-hole behavior,
+  and one-step change undo match Neovim.
+- Make logical `vic` selections route `y`, `d`, `c`, `p`, and `P` to the raw
+  Source cell while preserving native rendered Visual selections and restoring
+  existing Visual mappings.
+- Add changedtick-guarded Reader `.` repeat for cell delete/change/put and
+  reject unsupported multi-cell counts without mutating Source.
+- Stop mapping `cip` by default so native `ci` paragraph remains available;
+  add `:MarkdownTablePutCell` and `<Plug>(MarkdownTableWrapPutCell)`, while
+  retaining `mappings.reader.cell.put = "cip"` as an explicit opt-in.
+- Keep Reader `c` as a native Source change-operator prefix instead of eagerly
+  changing the current cell. `cic` remains the logical-cell operation, while
+  `cip`, `ciw`, `cw`, and other motions continue with their native meaning.
+- Preserve logical cell `.` repeat when undo followed by redo returns to the
+  recorded undo sequence; unrelated Source changes still invalidate it.
+- Keep Reader cell, link, context, fallback, and rendered-copy actions on
+  narrow snapshots instead of deep-copying the complete rendered document;
+  refocus changed cells through the existing logical-cell index.
+- Roll back failed Reader projection updates to the previous lines, indexes,
+  changedtick, and protected buffer state; failed Reader opens now release
+  Source `bufhidden` ownership and delete their disposable scratch buffer.
+- Contain and report unexpected scheduled-refresh failures, and make resize
+  events refresh every affected visible Reader instead of only the current
+  buffer.
+
+### Changed
+
+- Move configuration defaults/normalization and command/`<Plug>` registration
+  into focused modules. `init.lua` retains public API, per-Source policy,
+  scheduling, and cross-view lifecycle orchestration.
+
 ## 0.5.1 - Reader Cell Text-Object Fixes
 
 ### Fixed

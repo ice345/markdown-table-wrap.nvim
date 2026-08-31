@@ -107,7 +107,8 @@
 ---@field delete? MarkdownTableWrapMappingKey
 ---@field change? MarkdownTableWrapMappingKey
 ---@field put? MarkdownTableWrapMappingKey
----@field change_operator? MarkdownTableWrapMappingKey
+---@field change_operator? MarkdownTableWrapMappingKey Native Source change-operator proxy; defaults to c
+---@field repeat_change? MarkdownTableWrapMappingKey
 
 ---@class MarkdownTableWrapFloatMappings
 ---@field enabled? boolean

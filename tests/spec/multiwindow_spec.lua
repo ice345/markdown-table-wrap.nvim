@@ -44,6 +44,37 @@ h.test("two Reader windows keep independent geometry and Source ownership", func
     )
     h.assert_eq("Source remains safely hidden while Readers exist", vim.bo[source_bufnr].bufhidden, "hide")
 
+    local refresh_calls = {}
+    local original_refresh = reader.refresh
+    reader.refresh = function(reader_bufnr)
+      table.insert(refresh_calls, reader_bufnr)
+      return true
+    end
+    h.assert_eq("targeted resize refreshes one Reader", reader.refresh_windows({ first_win }), 1)
+    h.assert_deep_eq("targeted resize selects the matching Reader", refresh_calls, { first_reader })
+    refresh_calls = {}
+    h.assert_eq("global resize refreshes every visible Reader", reader.refresh_windows(), 2)
+    table.sort(refresh_calls)
+    local expected = { first_reader, second_reader }
+    table.sort(expected)
+    h.assert_deep_eq("global resize covers both Reader sessions", refresh_calls, expected)
+    reader.refresh = original_refresh
+
+    local resize_windows
+    local original_refresh_windows = reader.refresh_windows
+    reader.refresh_windows = function(winids)
+      resize_windows = winids
+      return 0
+    end
+    vim.api.nvim_exec_autocmds("VimResized", { modeline = false })
+    reader.refresh_windows = original_refresh_windows
+    local resized = {}
+    for _, winid in ipairs(resize_windows or {}) do
+      resized[winid] = true
+    end
+    h.assert_true("VimResized fans out to the first Reader window", resized[first_win])
+    h.assert_true("VimResized fans out to the second Reader window", resized[second_win])
+
     vim.api.nvim_set_current_win(first_win)
     plugin.close_reader()
     h.assert_true("closing first Reader leaves second active", reader.is_reader(second_reader))

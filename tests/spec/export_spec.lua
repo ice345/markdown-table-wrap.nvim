@@ -166,13 +166,19 @@ h.test("export actions are exposed as Plug mappings and commands", function()
   plugin.setup({ auto_preview = false })
   for _, plug in ipairs({
     "<Plug>(MarkdownTableWrapCopyCell)",
+    "<Plug>(MarkdownTableWrapPutCell)",
     "<Plug>(MarkdownTableWrapCopyTable)",
     "<Plug>(MarkdownTableWrapExportTSV)",
     "<Plug>(MarkdownTableWrapExportCSV)",
   }) do
     h.assert_true("export Plug exists: " .. plug, vim.fn.maparg(plug, "n") ~= "")
   end
-  for _, command in ipairs({ "MarkdownTableYankCell", "MarkdownTableYankTable", "MarkdownTableExport" }) do
+  for _, command in ipairs({
+    "MarkdownTableYankCell",
+    "MarkdownTablePutCell",
+    "MarkdownTableYankTable",
+    "MarkdownTableExport",
+  }) do
     h.assert_eq("export command exists: " .. command, vim.fn.exists(":" .. command), 2)
   end
 end)

@@ -53,15 +53,24 @@ Default interaction:
 - Inside a rendered table cell, |markdown-table-wrap-yic| yanks the original
   Markdown source, |markdown-table-wrap-vic| selects the complete logical cell
   across wrapped lines, |markdown-table-wrap-dic| clears only that cell,
-  |markdown-table-wrap-cic| clears it and enters Source Insert, and
-  |markdown-table-wrap-cip| replaces
-  it with the unnamed register. dic/cic put the removed source in the unnamed
-  register like a normal Vim change/delete. These operations preserve the row's other
-  cells and pipe delimiters. Cell changes are short Source hops and normally
-  allow Reader to reopen after InsertLeave.
-- |markdown-table-wrap-cell-change| has the same Source-cell change behavior
-  inside a cell. Outside a cell
-  it delegates to the captured Source mapping or native Vim change command.
+  and |markdown-table-wrap-cic| changes it in Source Insert. After vic, y/d/c/p
+  apply to the same raw Source cell. Neovim's native Source operators own
+  register and one-step undo behavior. Dot repeats the last successful cell
+  mutation while Source is unchanged; undo followed by redo preserves logical
+  repeat. Counts greater than one are rejected without changing Source. These
+  operations preserve the row's other cells and pipe delimiters.
+- Reader reserves Normal-mode y and d for the complete configured cell
+  sequences. By default, any mismatch such as yj, yk, yap, dj, dk, or dd is
+  cancelled without moving the cursor, changing registers/Source, copying
+  rendered borders, or raising E21. Use native v/V/CTRL-V followed by y to
+  copy rendered text, or edit Source for structural deletion.
+- |markdown-table-wrap-cip| is an opt-in compatibility mapping because cip is
+  Vim's native ci-paragraph sequence. |:MarkdownTablePutCell| provides cell put
+  without consuming that default key.
+- |markdown-table-wrap-cell-change| proxies Vim's native Source c operator.
+  cic is resolved first as the cell operation; cip, ciw, cw, c$, and other
+  motions leave Reader and continue in Source. Inside a table row, native cip
+  normally changes the whole contiguous table paragraph; use cic for one cell.
 - Native v/V/CTRL-V behavior is unchanged. Reader adds a visible Visual
   overlay so selections remain obvious on rendered table cells; the overlay
   does not change what native Visual mode selects.
@@ -86,35 +95,39 @@ rendered value occupies several wrapped Reader lines. Markdown semantics are
 always taken from the exact Source range, never reconstructed from displayed
 text:
 
-  yic  *markdown-table-wrap-yic*          Yank the raw Source cell into the
-                                          unnamed and yank registers.
+  yic  *markdown-table-wrap-yic*          Yank the raw Source cell with native
+                                          selected-register behavior.
   vic  *markdown-table-wrap-vic*          Enter Visual mode over every rendered
                                           segment of the logical cell.
-  dic  *markdown-table-wrap-dic*          Clear only the Source cell content and
-                                          put the removed source in the unnamed
-                                          register.
-  cic  *markdown-table-wrap-cic*          Clear the Source cell, leave Reader,
-                                          and enter Insert mode at the Source
-                                          range; Reader normally reopens after
-                                          InsertLeave.
-  cip  *markdown-table-wrap-cip*          Replace the Source cell with the
-                                          unnamed register (register newlines
-                                          become spaces).
-  c    *markdown-table-wrap-cell-change*  Behave like cic inside a cell;
-                                          outside a cell delegate to the
-                                          captured Source mapping or native Vim
-                                          change.
+  dic  *markdown-table-wrap-dic*          Clear only the Source cell content
+                                          with native delete-register behavior.
+  cic  *markdown-table-wrap-cic*          Change the Source cell as one undo
+                                          block and enter Insert mode; Reader
+                                          normally reopens after InsertLeave.
+  .                                       Repeat the last successful Source-cell
+                                          delete, change, or put while Source
+                                          remains unchanged.
+  cip  *markdown-table-wrap-cip*          Optional compatibility mapping for
+                                          Source-cell put. It is disabled by
+                                          default; native cip remains change
+                                          inner paragraph. Prefer
+                                          :MarkdownTablePutCell for cell put.
+  c    *markdown-table-wrap-cell-change*  Leave Reader and continue Vim's
+                                          native Source change operator. cic is
+                                          resolved first as the cell operation.
 
-These mappings use Vim's normal text-object phases rather than relying on a
-Normal-mode mapping that starts with an operator. In practice yic and dic are
-resolved as y + ic and d + ic while an operator is pending, and vic is
-resolved as v + ic in Visual mode. cic/cip retain their complete Normal-mode
-aliases while the contextual c mapping is installed, and also expose c + ic
-and c + ip operator-pending fallbacks when that mapping is customized or
-disabled. This keeps real keyboard input reliable even when timeoutlen is
-short. After vic, a Visual-mode yank copies only the rendered logical cell segments,
-without neighboring columns or pipe borders; yic remains the raw Source
-operation.
+Reader is a derived, non-modifiable buffer, so its Normal-mode y and d are
+guarded prefixes rather than native operators over rendered rows. The plugin
+consumes the configured suffix and runs only an exact match (yic/dic by
+default); Esc or a mismatch cancels without touching the cursor, registers,
+Source, or Reader. This prevents yj/yk from copying borders and prevents
+dj/dk/dd from raising E21. vic still resolves v + ic in Visual mode. cic
+retains its complete Normal-mode alias while the Source c proxy is installed;
+any other c motion is deliberately replayed against Source. An explicitly
+configured cip instead claims c + ip for cell put. After vic, temporary
+y/d/c/p mappings act on the raw Source cell and restore any previous Visual
+mappings when the logical selection ends. Native v/V/CTRL-V followed by y
+continues selecting and copying rendered Reader text.
 
 The mappings are enabled by default and can be changed under
 |markdown-table-wrap-mappings|. Set mappings.reader.cell to false or
@@ -352,6 +365,12 @@ COMMANDS                                      *markdown-table-wrap-commands*
     delimiters, padding, and decorative link icons are omitted; use yic for
     the raw Source cell.
 
+                                                      *:MarkdownTablePutCell*
+:MarkdownTablePutCell
+    Replace the current Reader cell with the unnamed register. Register
+    newlines become spaces. Use a mapping to
+    <Plug>(MarkdownTableWrapPutCell) when a selected register is required.
+
                                                     *:MarkdownTableYankTable*
 :MarkdownTableYankTable
     Copy one complete rendered table, including its borders and wrapped lines.
@@ -494,8 +513,9 @@ Default setup:
           visual = "vic",
           delete = "dic",
           change = "cic",
-          put = "cip",
+          put = false,
           change_operator = "c",
+          repeat_change = ".",
         },
       },
       float = {
@@ -651,11 +671,15 @@ mappings~                              *markdown-table-wrap-mappings*
     mappings.reader.cell controls Source-aware operations on the logical cell
     under the Reader cursor. Its defaults are yic (raw Source yank), vic
     (logical rendered-cell Visual selection), dic (clear Source content), cic
-    (clear and enter Source Insert), cip (replace with the unnamed register),
-    and c (cell change, with Source/native fallback outside a cell). Set the
-    value to false or { enabled = false } to disable all six mappings. A cell
-    mutation is restricted to one physical Source line; register newlines are
-    flattened to spaces so table row structure remains valid.
+    (change in Source Insert), c (native Source change-operator proxy), and .
+    (cell repeat). put defaults to false so Vim's native cip remains available
+    from Reader prose and table cells; set put = "cip" only as an explicit
+    compatibility opt-in. Set the cell table to false or { enabled = false }
+    to disable these mappings. A cell mutation is restricted to one physical
+    Source line; register newlines are flattened to spaces so table row
+    structure remains valid. With operator-prefixed yank/delete mappings,
+    Reader reserves those first keys and cancels every non-matching suffix;
+    use native Visual selection for rendered copy.
 
     mappings.reader.copy_cell and copy_table optionally install local keys for
     the semantic rendered-cell and complete rendered-table copy actions. Both
@@ -745,7 +769,7 @@ action({name}, {opts})~                       *markdown-table-wrap.action()*
     Run a stable mode-agnostic action. Common names are toggle_reader,
     toggle_inline, edit_source, close, refresh, open, open_split,
     open_vsplit, open_tab, next_buffer, previous_buffer, alternate_buffer,
-    split_source, vsplit_source, tab_source, inspect, help, copy_cell,
+    split_source, vsplit_source, tab_source, inspect, help, copy_cell, put_cell,
     copy_table, export_tsv, export_csv, viewport_left, viewport_right,
     format_table, add_row_table, delete_row_table, move_row_up_table,
     move_row_down_table, add_column_table, delete_column_table,
@@ -774,7 +798,7 @@ Stable normal-mode <Plug> mappings use the following names:
 - <Plug>(MarkdownTableWrapNextBuffer), PreviousBuffer, and AlternateBuffer
 - <Plug>(MarkdownTableWrapSplitSource), VSplitSource, and TabSource
 - <Plug>(MarkdownTableWrapInspect) and Help
-- <Plug>(MarkdownTableWrapCopyCell) and CopyTable
+- <Plug>(MarkdownTableWrapCopyCell), PutCell, and CopyTable
 - <Plug>(MarkdownTableWrapExportTSV) and ExportCSV
 - <Plug>(MarkdownTableWrapViewportLeft) and ViewportRight
 - <Plug>(MarkdownTableWrapFormatTable), AddRow, DeleteRow, MoveRowUp, and

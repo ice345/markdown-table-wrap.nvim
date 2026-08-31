@@ -1,5 +1,29 @@
 local h = require("tests.helpers")
 
+h.test("configuration resolution returns isolated normalized copies", function()
+  local config = require("markdown-table-wrap.config")
+  local first = config.defaults()
+  first.reader.wrap = false
+  first.mappings.reader.cell.yank = "custom"
+
+  local second = config.defaults()
+  h.assert_true("nested Reader defaults are isolated", second.reader.wrap)
+  h.assert_eq("nested mapping defaults are isolated", second.mappings.reader.cell.yank, "yic")
+
+  local opts = {
+    min_col_width = 0,
+    reader = { conceallevel = 9 },
+    mappings = { reader = { cell = { put = "gpc" } } },
+  }
+  local resolved = config.resolve(opts)
+  h.assert_eq("resolved widths are normalized", resolved.min_col_width, 1)
+  h.assert_eq("resolved Reader options are normalized", resolved.reader.conceallevel, 3)
+  h.assert_eq("partial cell mappings retain defaults", resolved.mappings.reader.cell.yank, "yic")
+  h.assert_eq("partial cell mappings retain overrides", resolved.mappings.reader.cell.put, "gpc")
+  h.assert_eq("resolution does not mutate caller options", opts.reader.conceallevel, 9)
+  h.assert_eq("resolution does not add defaults to caller options", opts.mappings.reader.cell.yank, nil)
+end)
+
 h.test("setup normalizes invalid configuration without breaking rendering", function()
   local plugin = require("markdown-table-wrap")
 
@@ -165,6 +189,7 @@ h.test("all documented commands exist after setup", function()
     "MarkdownTableViewportLeft",
     "MarkdownTableViewportRight",
     "MarkdownTableYankCell",
+    "MarkdownTablePutCell",
     "MarkdownTableYankTable",
     "MarkdownTableExport",
   }) do

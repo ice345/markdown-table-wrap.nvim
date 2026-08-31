@@ -180,13 +180,7 @@ function M.resolve(opts)
   }
 
   if mode == "reader" then
-    local reader_state = reader.get_state(view_bufnr)
-    context.reader = reader_state
-        and {
-          rendered_lines = #(reader_state.lines or {}),
-          source_alt_bufnr = reader_state.source_alt_bufnr,
-        }
-      or nil
+    context.reader = reader.summary(view_bufnr)
   elseif mode == "inline" then
     context.inline = inline.get_state(source_bufnr)
   elseif mode == "float" then

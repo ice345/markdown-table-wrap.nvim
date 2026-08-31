@@ -128,8 +128,8 @@ end
 actions.alternate_buffer = function(context)
   local target = nil
   if context.mode == "reader" then
-    local state = require("markdown-table-wrap.reader").get_state(context.view_bufnr)
-    target = state and state.source_alt_bufnr or nil
+    local summary = require("markdown-table-wrap.reader").summary(context.view_bufnr)
+    target = summary and summary.source_alt_bufnr or nil
     if not leave_view(context) then
       return false
     end
@@ -227,6 +227,18 @@ actions.copy_cell = function(context, opts)
   return require("markdown-table-wrap.export").cell(opts)
 end
 
+actions.put_cell = function(context, opts)
+  if context.mode ~= "reader" then
+    notify("cell put is available only in Reader mode", vim.log.levels.WARN)
+    return false
+  end
+  opts = opts or {}
+  return require("markdown-table-wrap.cell_ops").put(context.view_bufnr, {
+    register = opts.register or vim.v.register,
+    count = opts.count or vim.v.count,
+  })
+end
+
 actions.copy_table = function(context, opts)
   opts = vim.tbl_extend("force", {}, opts or {}, { context = context })
   return require("markdown-table-wrap.export").table(opts)
@@ -282,9 +294,8 @@ end
 
 function M.passthrough(reader_bufnr, lhs, spec)
   local reader = require("markdown-table-wrap.reader")
-  local state = reader.get_state(reader_bufnr)
   local context = context_for({ bufnr = reader_bufnr })
-  if not state or not context then
+  if not context then
     return false
   end
 
@@ -297,7 +308,7 @@ function M.passthrough(reader_bufnr, lhs, spec)
     return M.run(spec.action, vim.tbl_extend("force", {}, spec, { context = context }))
   end
 
-  local mapping = (state.passthrough_fallbacks or {})[lhs]
+  local mapping = reader.mapping_fallback(reader_bufnr, "passthrough", lhs)
   local policy = spec.policy or "leave"
   if policy == "leave" then
     if not leave_view(context) then

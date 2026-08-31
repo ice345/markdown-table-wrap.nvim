@@ -6,6 +6,93 @@ h.test("reader is the default preview mode", function()
   h.assert_eq("default preview mode", plugin.config.preview_mode, "reader")
 end)
 
+h.test("cursor-local Reader access avoids copying the complete state", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  plugin.setup({ auto_preview = false, preview_mode = "reader", min_col_width = 4, max_col_width = 12 })
+
+  h.with_buffer({
+    "| Name | Link |",
+    "| --- | --- |",
+    "| one | [GitHub](https://github.com) |",
+  }, function(source_bufnr)
+    vim.bo[source_bufnr].filetype = "markdown"
+    local reader_bufnr = plugin.reader_preview()
+    local state = reader.get_state(reader_bufnr)
+    local target
+    for row, line_object in ipairs(state.line_objects or {}) do
+      for _, cell in ipairs(type(line_object) == "table" and line_object.cells or {}) do
+        if cell.row_index == 1 and cell.column_index == 2 then
+          target = { row = row, col = cell.start_col }
+          break
+        end
+      end
+      if target then
+        break
+      end
+    end
+    h.assert_true("Reader link cell is indexed", target ~= nil)
+    vim.api.nvim_win_set_cursor(0, { target.row, target.col })
+    local cell = reader.cell_at_cursor(reader_bufnr)
+
+    local summary = reader.summary(reader_bufnr)
+    h.assert_eq("Reader summary reports line count", summary.rendered_lines, vim.api.nvim_buf_line_count(reader_bufnr))
+    local line_object = reader.line_object(reader_bufnr, target.row)
+    local original_line_text = line_object.text
+    line_object.text = "mutated snapshot"
+    h.assert_eq(
+      "line snapshot cannot mutate Reader state",
+      reader.line_object(reader_bufnr, target.row).text,
+      original_line_text
+    )
+
+    local segments = reader.cell_segments(reader_bufnr, cell)
+    h.assert_true("cell snapshot contains indexed segments", segments ~= nil and #segments > 0)
+    local original_start_col = segments[1].cell.start_col
+    segments[1].cell.start_col = -1
+    h.assert_eq(
+      "cell segment snapshot cannot mutate Reader state",
+      reader.cell_segments(reader_bufnr, cell)[1].cell.start_col,
+      original_start_col
+    )
+
+    local rendered = reader.rendered_table(reader_bufnr, cell.table_id)
+    local original_border = rendered.lines[1]
+    rendered.lines[1] = "mutated snapshot"
+    h.assert_eq(
+      "rendered table snapshot cannot mutate Reader state",
+      reader.rendered_table(reader_bufnr, cell.table_id).lines[1],
+      original_border
+    )
+
+    local original_get_state = reader.get_state
+    reader.get_state = function()
+      error("internal Reader action requested a complete state snapshot")
+    end
+    local ok, err = pcall(function()
+      local context = plugin.get_state(reader_bufnr)
+      h.assert_eq("Reader context uses the narrow summary", context.reader.rendered_lines, summary.rendered_lines)
+      h.assert_true(
+        "Reader link lookup uses one line object",
+        #require("markdown-table-wrap.links").targets(context) > 0
+      )
+      h.assert_true(
+        "rendered cell copy avoids full Reader state",
+        plugin.copy_rendered_cell({ clipboard = false, silent = true })
+      )
+      h.assert_true(
+        "rendered table copy avoids full Reader state",
+        plugin.copy_rendered_table({ clipboard = false, silent = true })
+      )
+    end)
+    reader.get_state = original_get_state
+    h.assert_true("cursor-local Reader paths do not call get_state: " .. tostring(err), ok)
+
+    plugin.close_reader()
+    plugin.state.paused_buffers[source_bufnr] = nil
+  end)
+end)
+
 h.test("reader replaces source tables without modifying Markdown", function()
   local plugin = require("markdown-table-wrap")
   local reader = require("markdown-table-wrap.reader")

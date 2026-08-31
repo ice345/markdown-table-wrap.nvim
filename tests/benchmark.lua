@@ -102,10 +102,33 @@ if vim.env.MARKDOWN_TABLE_WRAP_BENCH_READER == "1" then
   local refresh_ms = elapsed_ms(function()
     require("markdown-table-wrap.reader").refresh(reader_bufnr)
   end)
+  local reader = require("markdown-table-wrap.reader")
+  local snapshot_ms, snapshot = elapsed_ms(function()
+    return reader.get_state(reader_bufnr)
+  end)
+  local target
+  for row, line_object in ipairs(snapshot.line_objects or {}) do
+    local cell = type(line_object) == "table" and (line_object.cells or {})[1] or nil
+    if cell and cell.row_index == 1 then
+      target = { row, cell.start_col }
+      break
+    end
+  end
+  assert(target, "Reader benchmark could not resolve a cell")
+  vim.api.nvim_win_set_cursor(0, target)
+  local local_cell_ms = elapsed_ms(function()
+    for _ = 1, 500 do
+      local cell = assert(reader.cell_at_cursor(reader_bufnr))
+      assert(reader.cell_segments(reader_bufnr, cell))
+      assert(reader.line_object(reader_bufnr, target[1]))
+    end
+  end)
 
   print(string.format("large Reader source   %8d lines", #lines))
   print(string.format("large Reader output   %8d lines  %d extmark(s)", rendered_lines, extmarks))
   print(string.format("large Reader open     %8.2f ms", cold_ms))
   print(string.format("large Reader refresh  %8.2f ms", refresh_ms))
   print(string.format("500 gg/G pairs        %8.2f ms", movement_ms))
+  print(string.format("full state snapshot   %8.2f ms", snapshot_ms))
+  print(string.format("500 local cell reads  %8.2f ms", local_cell_ms))
 end

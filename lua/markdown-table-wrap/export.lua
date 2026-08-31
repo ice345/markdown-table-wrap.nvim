@@ -79,29 +79,9 @@ local function reader_cell_text(context)
   end
   local reader = require("markdown-table-wrap.reader")
   local cell = reader.cell_at_cursor(context.view_bufnr, context.winid)
-  local state = reader.get_state(context.view_bufnr)
-  if not cell or not state then
+  if not cell then
     return nil
   end
-
-  local segments = {}
-  for row, line_object in ipairs(state.line_objects or {}) do
-    if type(line_object) == "table" then
-      for _, candidate in ipairs(line_object.cells or {}) do
-        if
-          candidate.table_id == cell.table_id
-          and candidate.row_index == cell.row_index
-          and candidate.column_index == cell.column_index
-        then
-          table.insert(segments, { row = row, text = candidate.text or "" })
-          break
-        end
-      end
-    end
-  end
-  table.sort(segments, function(a, b)
-    return a.row < b.row
-  end)
   local table_info = current_table(context, {})
   local source_cell_value = table_info
       and (cell.row_index == 0 and table_info.header[cell.column_index] or table_info.rows[cell.row_index] and table_info.rows[cell.row_index][cell.column_index])
@@ -111,8 +91,8 @@ local function reader_cell_text(context)
   end
 
   local values = {}
-  for _, item in ipairs(segments) do
-    table.insert(values, item.text)
+  for _, item in ipairs(reader.cell_segments(context.view_bufnr, cell) or {}) do
+    table.insert(values, item.cell.text or "")
   end
   return table.concat(values, "\n"), cell
 end
@@ -176,15 +156,7 @@ function M.table(opts)
 
   local rendered
   if context.mode == "reader" then
-    local state = require("markdown-table-wrap.reader").get_state(context.view_bufnr)
-    if state then
-      for _, segment in ipairs(state.segments or {}) do
-        if segment.rendered and segment.rendered.table_id == table_info.id then
-          rendered = segment.rendered
-          break
-        end
-      end
-    end
+    rendered = require("markdown-table-wrap.reader").rendered_table(context.view_bufnr, table_info.id)
   elseif context.mode == "float" then
     rendered = require("markdown-table-wrap").state.float_rendered
   end

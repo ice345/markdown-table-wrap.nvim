@@ -60,7 +60,8 @@ Floating preview for long table reading:
 - Supports inline custom themes and loading custom theme files from a theme directory.
 - Provides source-aware table cell navigation commands.
 - Provides Source-aware Reader cell mappings: `yic`, `vic`, `dic`, `cic`,
-  `cip`, and contextual `c`; native Visual selections remain visible.
+  native Source `c` proxy, and `.` repeat; native Visual selections remain
+  visible.
 - Provides inline viewport scrolling for rendered rows that exceed the original source table height.
 - Can also render the same table in a floating window.
 - Provides a full-document reader that renders every supported table without requiring cursor focus.
@@ -153,8 +154,9 @@ return {
             visual = "vic",
             delete = "dic",
             change = "cic",
-            put = "cip",
+            put = false,
             change_operator = "c",
+            repeat_change = ".",
           },
         },
         float = {
@@ -220,18 +222,65 @@ the guarded exception for editing one Source cell.
 Reader protects those finished table rows from being interpreted as Markdown a
 second time. Characters such as `_` and `<...>` inside rendered code therefore
 remain literal and cannot shift a wrapped border, while search and yank still
-operate on the real rendered lines underneath the display layer.
+operate on the real rendered lines underneath the display layer through a
+native Visual selection. Normal-mode
+`y`/`d` are the guarded cell-operator prefixes described below; use a native
+Visual selection followed by `y` when the rendered lines themselves are the
+copy target.
 
 The default interaction model is:
 
 - Normal mode stays in Reader and shows the rendered document.
 - `v`, `V`, and `<C-v>` select real Reader lines. Yanked text is exactly the rendered content, and the view remains in Reader after copying.
-- Inside a rendered table cell, `yic` yanks the original Markdown cell source (for example, `[GitHub](https://github.com)`), `vic` selects the complete logical cell across wrapped lines, `dic` clears only that cell, `cic` clears it and enters Source Insert, and `cip` replaces it with the unnamed register. `yic`/`dic` use Vim's operator-pending `y`/`d` plus the `ic` text-object suffix, while `vic` uses Visual `v` plus `ic`; `cic`/`cip` keep complete aliases for the contextual `c` mapping and also expose `c`-operator suffix fallbacks. `vic` followed by `y` copies only the rendered cell segments (never a neighboring column or `│` border). `dic`/`cic` put the removed source in the unnamed register like a normal Vim change/delete. These operations never rewrite the row's other cells or pipe delimiters. Cell changes are short Source hops and normally let Reader reopen after `InsertLeave`.
-- `c` has the same Source-cell change behavior when the cursor is inside a table cell. Outside a cell it safely delegates to the captured Source mapping or native Vim change command.
+- Inside a rendered table cell, `yic` yanks the original Markdown cell source
+  (for example, `[GitHub](https://github.com)`), `vic` selects the complete
+  logical cell across wrapped lines, `dic` clears only that cell, and `cic`
+  changes it in Source Insert. `vic` followed by `y`, `d`, `c`, or `p` applies
+  that operation to the same raw Source cell; the rendered selection is only
+  its visible projection. Named, numbered, clipboard, small-delete, and
+  black-hole register behavior is delegated to Neovim's native Source
+  operators. `cic` deletion plus insertion is one undo block, and `.` repeats
+  the last successful cell delete/change/put while Source remains unchanged;
+  undo followed by redo preserves that logical repeat. Counts greater than one
+  are rejected without changing Source.
+- Reader claims the normal `y` and `d` prefixes for those Source-backed cell
+  operations. Only the complete configured sequences (`yic` and `dic` by
+  default) run; `Esc` or a mismatch such as `yj`, `yk`, `yap`, `dj`, `dk`, or
+  `dd` cancels the whole queued operation without moving the cursor, changing
+  registers/Source, copying rendered borders, or raising `E21`. To copy
+  rendered text, select it with native `v`, `V`, or `<C-v>` and then press
+  `y`. For structural deletion, press `e` to edit Source first.
+- `c` is a native Source change-operator proxy, not a shortcut for `cic`.
+  `cic` is resolved first as the cell operation; `cip`, `ciw`, `cw`, `c$`, and
+  other `c` motions leave Reader and continue against the canonical Source.
+  In a table row, native `cip` usually means the whole contiguous Markdown
+  table paragraph, not one cell—use `cic` for a cell.
+- `cip` is not mapped to a cell operation by default because it is Vim's
+  native `ci` paragraph operation.
+  `:MarkdownTablePutCell` replaces the current Reader cell from the unnamed
+  register, and `mappings.reader.cell.put = "cip"` remains available as an
+  explicit compatibility opt-in. Register newlines are flattened to spaces.
 - `:MarkdownTableYankCell` copies the semantic text currently displayed in a
   cell (Markdown delimiters and decorative link icons are omitted), while
   `yic` keeps copying the raw Source cell. `:MarkdownTableYankTable` copies
   one complete rendered table including its borders.
+- `:MarkdownTablePutCell` replaces the current Reader cell from the unnamed
+  register without consuming Vim's native `cip` key sequence.
+
+The tested Vim-semantics contract is:
+
+| Input | Reader-cell behavior |
+| --- | --- |
+| `yic`, `"ayic` | Yank one exact raw Source cell through native register rules. |
+| `dic`, `"adic`, `"_dic` | Delete one Source cell; named, small-delete, yank-zero, and black-hole registers follow native rules. |
+| `cic`, `"acic` | Change one Source cell, with deletion and typed insertion in one undo block. |
+| `vic` then `y/d/c/p` | Apply the selected operator to the same logical Source cell; native `v/V/<C-v>` still operate on rendered text. |
+| `yj`, `yk`, `yap`, `dj`, `dk`, `dd`, and other incomplete/non-cell `y`/`d` sequences | Cancel in Reader without changing the cursor, registers, rendered buffer, or Source. |
+| `c` followed by a non-`ic` motion | Leave Reader and continue the native Source change operator. |
+| `cip` | Native change-inner-paragraph; it is not cell put unless explicitly rebound. |
+| `.` | Repeat the last logical cell mutation on the current cell, including after undo then redo. |
+| `2yic`, `2dic`, `2cic` | Reject the undefined multi-cell count without changing Source or registers. |
+
 - `:MarkdownTableExport [tsv|csv]` exports the current table as structured
   text; add `!` to export every table in the Source buffer. TSV uses C-style
   escapes for tabs/newlines and CSV uses quote escaping.
@@ -316,11 +365,12 @@ For daily use, five actions cover the normal workflow:
 - Learn: `:MarkdownTableHelp` shows the configured view keys and command-based
   exit path, including when local Reader mappings are disabled.
 
-Reader's native Visual/yank copies rendered Unicode lines; `yic` and the other
-cell mappings deliberately operate on the original Source span. Source and
-Inline native copy remains Markdown source. Reader search operates on rendered
-text. File navigation and buffer transitions resolve back to Source, while
-structural edits should be performed in Source.
+Reader's native Visual selection followed by `y` copies rendered Unicode
+lines; normal `y`/`d` are guarded for `yic`/`dic`, and the cell mappings
+deliberately operate on the original Source span. Source and Inline native
+copy remains Markdown source. Reader search operates on rendered text. File
+navigation and buffer transitions resolve back to Source, while structural
+edits should be performed in Source.
 
 ### Why Reader Avoids Wrap Leaks
 
@@ -401,6 +451,8 @@ inline and floating modes.
 - `:MarkdownTableScrollTop` jumps the rendered table viewport to the top.
 - `:MarkdownTableScrollBottom` jumps the rendered table viewport to the bottom.
 - `:MarkdownTableYankCell` copies the displayed semantic cell under the cursor.
+- `:MarkdownTablePutCell` replaces the current Reader cell from the unnamed
+  register; mappings can select another register.
 - `:MarkdownTableYankTable` copies the complete rendered table under the cursor.
 - `:MarkdownTableExport[!] [tsv|csv]` copies the current table (or every table
   with `!`) as TSV or CSV; the default format is TSV.
@@ -570,9 +622,11 @@ Options:
   `<Plug>` actions remain available. `mappings.reader.passthrough` accepts a
   stable action name or `{ policy = "leave" | "source" | "view" }` for an
   explicitly captured Source mapping. `mappings.reader.cell` controls the
-  Source-aware Reader cell mappings (`yic`, `vic`, `dic`, `cic`, `cip`, and
-  `c`); set it to `false` or `{ enabled = false }` to disable them, or replace
-  individual keys with your own mappings.
+  Source-aware Reader cell mappings (`yic`, `vic`, `dic`, `cic`, native Source
+  `c` proxy, and `.` repeat); set it to `false` or `{ enabled = false }` to
+  disable them, or replace individual keys with your own mappings. Cell put
+  defaults to `false`; set `put = "cip"` only when intentionally replacing
+  native `ci`-paragraph behavior.
   `mappings.reader.copy_cell` and `copy_table` optionally add local keys for
   rendered semantic-cell and rendered-table copy; both default to `false`.
 - `link`: icon configuration plus an optional `resolver(target, context,
@@ -771,7 +825,8 @@ Stable normal-mode `<Plug>` mappings follow the
 `<Plug>(MarkdownTableWrapAction)` form. Actions are `ToggleReader`,
 `ToggleInline`, `EditSource`, `Close`, `Refresh`, `Open`, `OpenSplit`,
 `OpenVSplit`, `OpenTab`, `NextBuffer`, `PreviousBuffer`, `AlternateBuffer`,
-`SplitSource`, `VSplitSource`, `TabSource`, `Inspect`, and `Help`.
+`SplitSource`, `VSplitSource`, `TabSource`, `Inspect`, `Help`, `PutCell`,
+`CopyCell`, and `CopyTable`.
 
 The plugin emits `User` events named `MarkdownTableWrapReaderEnter`,
 `MarkdownTableWrapReaderLeave`, `MarkdownTableWrapViewChanged`, and
@@ -795,8 +850,9 @@ The current rendering model includes:
 - Automatic rendering of every supported table without cursor focus.
 - Command-free workflow: edit Source in Insert mode and view rendered content in Normal mode.
 - Visual selection of real Reader lines, with Reader retained after yank.
-- Source-aware Reader cell operations: `yic`, `vic`, `dic`, `cic`, `cip`, and
-  `c`, with visible selection feedback for native `v`/`V`/`<C-v>`.
+- Source-aware Reader cell operations: `yic`, `vic`, `dic`, `cic`, native
+  Source `c` proxy, and `.` repeat, with opt-in cell put and visible selection
+  feedback for native `v`/`V`/`<C-v>`.
 - Cached refreshes to avoid unnecessary redraw flicker.
 - Window-local conceal handling with restoration on clear.
 - Semantic highlights for borders, headers, inline code, and links.

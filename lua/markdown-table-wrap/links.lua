@@ -209,10 +209,14 @@ local function rendered_targets(context)
   if context.mode ~= "reader" and context.mode ~= "float" then
     return {}
   end
-  local state = context.mode == "reader" and require("markdown-table-wrap.reader").get_state(context.view_bufnr)
-    or require("markdown-table-wrap").state.float_rendered
   local row = context.cursor.view_lnum
-  local line_object = state and state.line_objects[row] or nil
+  local line_object
+  if context.mode == "reader" then
+    line_object = require("markdown-table-wrap.reader").line_object(context.view_bufnr, row)
+  else
+    local rendered = require("markdown-table-wrap").state.float_rendered
+    line_object = rendered and (rendered.line_objects or {})[row] or nil
+  end
   local targets = {}
   for _, chunk in ipairs(type(line_object) == "table" and line_object.chunks or {}) do
     if

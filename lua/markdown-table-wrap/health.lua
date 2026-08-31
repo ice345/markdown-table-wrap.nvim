@@ -43,6 +43,8 @@ function M.collect()
     "markdown-table-wrap",
     "markdown-table-wrap.actions",
     "markdown-table-wrap.cache",
+    "markdown-table-wrap.commands",
+    "markdown-table-wrap.config",
     "markdown-table-wrap.context",
     "markdown-table-wrap.discovery",
     "markdown-table-wrap.events",

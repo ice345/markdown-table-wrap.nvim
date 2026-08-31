@@ -95,6 +95,49 @@ h.test("repeated setup invalidates refreshes from the previous setup epoch", fun
   end)
 end)
 
+h.test("scheduled refresh failures are contained and do not block later work", function()
+  local plugin = require("markdown-table-wrap")
+  plugin.setup({ auto_preview = false, preview_mode = "inline", debounce_ms = 0 })
+
+  h.with_buffer(table_lines, function(buf)
+    vim.bo[buf].filetype = "markdown"
+    local original_refresh = plugin.refresh_auto
+    local original_notify = vim.notify
+    local failure_reported = false
+    vim.notify = function(message)
+      if tostring(message):find("scheduled refresh failed", 1, true) then
+        failure_reported = true
+      end
+    end
+    plugin.refresh_auto = function()
+      error("forced scheduled refresh failure")
+    end
+
+    plugin.schedule_refresh({ bufnr = buf, winid = vim.api.nvim_get_current_win(), immediate = true })
+    h.assert_true(
+      "scheduled refresh error is reported",
+      vim.wait(200, function()
+        return failure_reported
+      end, 5)
+    )
+
+    local later_calls = 0
+    plugin.refresh_auto = function()
+      later_calls = later_calls + 1
+    end
+    plugin.schedule_refresh({ bufnr = buf, winid = vim.api.nvim_get_current_win(), immediate = true })
+    h.assert_true(
+      "a later scheduled refresh still runs",
+      vim.wait(200, function()
+        return later_calls == 1
+      end, 5)
+    )
+
+    plugin.refresh_auto = original_refresh
+    vim.notify = original_notify
+  end)
+end)
+
 h.test("interactive mode auto and viewport choices stay buffer local", function()
   local plugin = require("markdown-table-wrap")
   local inline = require("markdown-table-wrap.inline")
@@ -320,6 +363,163 @@ h.test("repeated setup reconfigures an open Reader", function()
     h.assert_true("Reader stays open across setup", reader.is_reader(0))
     h.assert_false("open Reader receives the new window options", vim.wo.wrap)
     plugin.close_reader()
+  end)
+end)
+
+h.test("Reader scratch configuration failure cleans the partial buffer", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  plugin.setup({ auto_preview = false, preview_mode = "reader" })
+
+  h.with_buffer(table_lines, function(source_bufnr)
+    vim.bo[source_bufnr].filetype = "markdown"
+    local original_create_autocmd = vim.api.nvim_create_autocmd
+    local original_notify = vim.notify
+    vim.api.nvim_create_autocmd = function(event, opts)
+      if event == "BufWriteCmd" and opts.buffer and vim.b[opts.buffer].markdown_table_wrap_reader == true then
+        error("forced Reader scratch configuration failure")
+      end
+      return original_create_autocmd(event, opts)
+    end
+    vim.notify = function() end
+
+    local called, reader_bufnr = pcall(plugin.reader_preview)
+
+    vim.api.nvim_create_autocmd = original_create_autocmd
+    vim.notify = original_notify
+    h.assert_true("Reader scratch configuration failure is contained", called)
+    h.assert_eq("failed scratch configuration returns nil", reader_bufnr, nil)
+    h.assert_eq("failed scratch configuration keeps Source current", vim.api.nvim_get_current_buf(), source_bufnr)
+    h.assert_false("failed scratch configuration never acquires Source", reader.has_source_readers(source_bufnr))
+    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+      h.assert_false(
+        "failed scratch configuration leaves no partial buffer",
+        vim.api.nvim_buf_is_valid(bufnr) and vim.b[bufnr].markdown_table_wrap_source == source_bufnr
+      )
+    end
+  end)
+end)
+
+h.test("Reader open failure releases Source ownership and scratch state", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  local cell_ops = require("markdown-table-wrap.cell_ops")
+  plugin.setup({ auto_preview = false, preview_mode = "reader" })
+
+  h.with_buffer(table_lines, function(source_bufnr)
+    vim.bo[source_bufnr].filetype = "markdown"
+    local original_bufhidden = vim.bo[source_bufnr].bufhidden
+    local original_install = cell_ops.install
+    local original_notify = vim.notify
+    cell_ops.install = function()
+      error("forced Reader mapping failure")
+    end
+    vim.notify = function() end
+
+    local called, reader_bufnr = pcall(plugin.reader_preview)
+
+    cell_ops.install = original_install
+    vim.notify = original_notify
+    h.assert_true("Reader open failure is contained", called)
+    h.assert_eq("failed Reader open returns nil", reader_bufnr, nil)
+    h.assert_eq("failed Reader open keeps Source current", vim.api.nvim_get_current_buf(), source_bufnr)
+    h.assert_eq("failed Reader open restores Source bufhidden", vim.bo[source_bufnr].bufhidden, original_bufhidden)
+    h.assert_false("failed Reader open releases Source ownership", reader.has_source_readers(source_bufnr))
+    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+      h.assert_false(
+        "failed Reader open leaves no dependent scratch buffer",
+        vim.api.nvim_buf_is_valid(bufnr) and vim.b[bufnr].markdown_table_wrap_source == source_bufnr
+      )
+    end
+  end)
+end)
+
+h.test("Reader finalization failure restores the Source window transaction", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  plugin.setup({
+    auto_preview = false,
+    preview_mode = "reader",
+    reader = { wrap = false, conceallevel = 3 },
+  })
+
+  h.with_buffer(table_lines, function(source_bufnr)
+    vim.bo[source_bufnr].filetype = "markdown"
+    local winid = vim.api.nvim_get_current_win()
+    vim.wo[winid].wrap = true
+    vim.wo[winid].conceallevel = 0
+    local original_bufhidden = vim.bo[source_bufnr].bufhidden
+    local original_sticky = reader.update_sticky_header
+    local original_notify = vim.notify
+    reader.update_sticky_header = function()
+      error("forced Reader finalization failure")
+    end
+    vim.notify = function() end
+
+    local called, reader_bufnr = pcall(plugin.reader_preview)
+
+    reader.update_sticky_header = original_sticky
+    vim.notify = original_notify
+    h.assert_true("Reader finalization failure is contained", called)
+    h.assert_eq("failed Reader finalization returns nil", reader_bufnr, nil)
+    h.assert_eq("failed Reader finalization restores Source", vim.api.nvim_win_get_buf(winid), source_bufnr)
+    h.assert_true("failed Reader finalization restores wrap", vim.wo[winid].wrap)
+    h.assert_eq("failed Reader finalization restores conceallevel", vim.wo[winid].conceallevel, 0)
+    h.assert_eq("failed Reader finalization restores bufhidden", vim.bo[source_bufnr].bufhidden, original_bufhidden)
+    h.assert_false("failed Reader finalization releases ownership", reader.has_source_readers(source_bufnr))
+    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+      h.assert_false(
+        "failed Reader finalization deletes its scratch buffer",
+        vim.api.nvim_buf_is_valid(bufnr) and vim.b[bufnr].markdown_table_wrap_source == source_bufnr
+      )
+    end
+  end)
+end)
+
+h.test("Reader refresh failure rolls back projection text and metadata", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  local theme = require("markdown-table-wrap.theme")
+  plugin.setup({ auto_preview = false, preview_mode = "reader" })
+
+  h.with_buffer(table_lines, function(source_bufnr)
+    vim.bo[source_bufnr].filetype = "markdown"
+    local reader_bufnr = plugin.reader_preview()
+    local original_lines = vim.api.nvim_buf_get_lines(reader_bufnr, 0, -1, false)
+    local original_tick = reader.get_state(reader_bufnr).source_changedtick
+    vim.api.nvim_buf_set_lines(source_bufnr, 2, 3, false, { "| updated | changed |" })
+
+    local original_apply = theme.apply
+    local original_notify = vim.notify
+    theme.apply = function()
+      error("forced Reader highlight failure")
+    end
+    vim.notify = function() end
+    local called, refreshed = pcall(reader.refresh, reader_bufnr)
+    theme.apply = original_apply
+    vim.notify = original_notify
+
+    h.assert_true("Reader refresh failure is contained", called)
+    h.assert_false("failed Reader refresh reports false", refreshed)
+    h.assert_false("failed Reader refresh restores non-modifiable", vim.bo[reader_bufnr].modifiable)
+    h.assert_deep_eq(
+      "failed Reader refresh restores the previous projection",
+      vim.api.nvim_buf_get_lines(reader_bufnr, 0, -1, false),
+      original_lines
+    )
+    h.assert_eq(
+      "failed Reader refresh keeps the previous changedtick",
+      reader.get_state(reader_bufnr).source_changedtick,
+      original_tick
+    )
+    h.assert_true("Reader refresh recovers after the transient failure", reader.refresh(reader_bufnr))
+    h.assert_true(
+      "recovered Reader reflects current Source",
+      table.concat(vim.api.nvim_buf_get_lines(reader_bufnr, 0, -1, false), "\n"):find("updated", 1, true) ~= nil
+    )
+
+    plugin.close_reader()
+    plugin.state.paused_buffers[source_bufnr] = nil
   end)
 end)
 

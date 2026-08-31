@@ -27,6 +27,7 @@
 :MarkdownTablePrevCell	markdown-table-wrap.txt	/*:MarkdownTablePrevCell*
 :MarkdownTablePrevRow	markdown-table-wrap.txt	/*:MarkdownTablePrevRow*
 :MarkdownTablePreview	markdown-table-wrap.txt	/*:MarkdownTablePreview*
+:MarkdownTablePutCell	markdown-table-wrap.txt	/*:MarkdownTablePutCell*
 :MarkdownTableReader	markdown-table-wrap.txt	/*:MarkdownTableReader*
 :MarkdownTableRefresh	markdown-table-wrap.txt	/*:MarkdownTableRefresh*
 :MarkdownTableScrollBottom	markdown-table-wrap.txt	/*:MarkdownTableScrollBottom*

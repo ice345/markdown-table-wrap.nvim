@@ -17,10 +17,10 @@ were added:
 | GFM parsing | `parser_spec.lua` | delimiter validation, escaped/optional outer pipes, GFM missing-cell rows, fenced and block boundaries, linear large-document scanning |
 | Inline Markdown | `markdown_spec.lua`, `wrap_spec.lua` | code, emphasis, links, icons, concealed code delimiters, hard breaks, CJK width, preferred wrap boundaries, metadata preservation |
 | Geometry | `width_spec.lua`, `render_spec.lua` | display width, padding, alignment, border variants, source-row mapping, fit-to-window and intentional overflow |
-| Neovim views | `inline_spec.lua`, `reader_spec.lua`, `mode_spec.lua`, `lifecycle_spec.lua`, `multiwindow_spec.lua`, `cell_ops_spec.lua`, `reader_ergonomics_spec.lua`, `table_edit_spec.lua` | conceal/extmarks, wrap scope, viewport scrolling, per-buffer debounce/state, Reader policy, native buffer exits, shared-Source Readers, window option and lifetime cleanup, Source-aware cell yank/change/put and visible Visual feedback, sticky headers, indexed cell lookup, help ergonomics, explicit Source table rewrites, one-cell popup edits, and unsafe-table guards |
+| Neovim views | `inline_spec.lua`, `reader_spec.lua`, `mode_spec.lua`, `lifecycle_spec.lua`, `multiwindow_spec.lua`, `cell_ops_spec.lua`, `reader_ergonomics_spec.lua`, `table_edit_spec.lua` | conceal/extmarks, wrap scope, viewport scrolling, per-buffer debounce/state, Reader policy, native buffer exits, shared-Source Readers, multiwindow resize fanout, transactional Reader open/refresh rollback, window option and lifetime cleanup, Source-aware cell registers/count rejection/native `c` motions/undo-redo repeat and visible Visual feedback, sticky headers, indexed cell lookup/refocus, narrow Reader snapshots, help ergonomics, explicit Source table rewrites, one-cell popup edits, and unsafe-table guards |
 | Context and actions | `context_spec.lua`, `actions_spec.lua`, `inspect_spec.lua` | Source resolution across modes, stable actions and Plug mappings, disabled/local mappings, passthrough, inspect/help/statusline, health diagnostics |
 | Links and mappings | `links_spec.lua`, `mappings_spec.lua` | relative/absolute files, line/anchor/wiki/image/URL targets, Float/Reader metadata, custom resolver, selector, callback/string/expr/remap/replace_keycodes restore semantics |
-| Interaction | `nav_spec.lua`, `config_spec.lua`, `system_spec.lua` | cell navigation, commands, lazy-loading timing, configuration validation, filetype boundaries |
+| Interaction | `nav_spec.lua`, `config_spec.lua`, `system_spec.lua` | cell navigation, extracted command registration, isolated defaults/options, configuration validation, lazy-loading timing, and filetype boundaries |
 | Themes | `theme_spec.lua` | presets, overrides, auto-detection, and theme files |
 | v0.4 model/performance | `v04_spec.lua`, `fixtures/gfm_tables.lua`, `benchmark.lua` | exact Source spans, token contract, classified GFM corpus, discovery fallback, cache invalidation/cleanup, reference budgets |
 
@@ -35,12 +35,19 @@ plugins' extmarks are outside a headless process:
 3. Test with `render-markdown.nvim` loaded and its pipe-table renderer disabled.
 4. Test code-wrapped link/image labels such as ``[`overview`](path.md)`` and
    confirm Inline separators stay aligned.
-5. In Reader, test real typed `yic` on a wrapped link/code cell and confirm the
-   register contains raw Markdown; test `vic` followed by `y` and confirm the
-   register contains only the rendered logical cell, with no neighboring text
-   or `│` borders. Test native `v`/`V`/`<C-v>`, `dic`, `cic`, `cip`, and `c` on
-   both a cell and ordinary prose. Use CJK text and link icons, and confirm
-   `c` delegates to the user's Source mapping outside cells.
+5. In Reader, test real typed `yic` and `vic` followed by `y` on a wrapped
+   link/code cell and confirm both use the exact raw Markdown Source. Repeat
+   with named and black-hole registers. Test `vic` followed by `d`, `c`, and
+   `p`; `dic`, `cic`, native Source `c` motions, and `.`; one `u` must restore
+   a complete `cic` replacement, redo must reapply it, and `.` must then work
+   on another logical cell. Confirm counts greater than one are rejected
+   unchanged, native `cip` remains reachable from prose and table cells, and
+   opt-in cell put works through `:MarkdownTablePutCell` or a configured key. Native
+   `v`/`V`/`<C-v>` must continue selecting rendered text. Use CJK/link icons
+   and confirm `c` delegates to the user's Source mapping from any Reader
+   position. Mistype `yj`, `yk`, `yap`, `dj`, `dk`, and `dd`; each must cancel
+   without moving the cursor, changing registers/Source, copying a border, or
+   raising `E21`.
 6. Test `gx`, `:w`, `:wq`, `:x`, and `ZZ` from Reader against a real file.
 7. Test `:MarkdownTableYankCell`, `:MarkdownTableYankTable`, and
    `:MarkdownTableExport[!] [tsv|csv]` in Source, Inline, and Reader. Confirm

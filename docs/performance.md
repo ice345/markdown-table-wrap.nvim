@@ -59,6 +59,8 @@ consolidation measured approximately:
 | Cold Reader open | 1.4–1.5 s |
 | Cached full Reader refresh | 0.30 s |
 | 500 `gg`/`G` pairs | 42–47 ms total |
+| Full internal-state snapshot | about 57 ms |
+| 500 indexed local-cell reads | about 2.2 ms total |
 | Reader table extmarks | 20,005 |
 
 These figures are diagnostic, not a zero-latency guarantee. Headless movement
@@ -69,3 +71,11 @@ refresh still materialize the complete rendered document, so very large tables
 can produce a visible pause. A future lazy/viewport architecture must be judged
 against this scenario without sacrificing search, selection, yank, exact
 Source mapping, or renderer isolation.
+
+The full-state figure is retained to expose the cost of copying every rendered
+line and semantic object. It is not part of normal cell interaction: Reader
+cell, link, context, fallback, and rendered-copy paths request narrow snapshots
+whose work is bounded by one line, one logical cell, or one selected table. The
+opt-in benchmark measures both paths so an accidental return to document-wide
+copying remains visible without imposing machine-dependent timing assertions in
+the correctness suite.

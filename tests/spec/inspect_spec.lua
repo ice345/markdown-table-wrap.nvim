@@ -53,6 +53,8 @@ h.test("health report covers context resolver mappings and coexistence", functio
   end
   local text = table.concat(messages, "\n")
   h.assert_true("health checks context", text:find("context", 1, true) ~= nil)
+  h.assert_true("health checks extracted commands", text:find("Loaded markdown%-table%-wrap%.commands") ~= nil)
+  h.assert_true("health checks extracted config", text:find("Loaded markdown%-table%-wrap%.config") ~= nil)
   h.assert_true("health checks resolver", text:find("Link resolver", 1, true) ~= nil)
   h.assert_true("health checks mappings", text:find("Reader mappings disabled", 1, true) ~= nil)
   h.assert_true("health checks renderer coexistence", text:find("render%-markdown.nvim") ~= nil)

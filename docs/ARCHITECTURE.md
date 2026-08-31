@@ -1,8 +1,8 @@
 # Architecture
 
 This document explains how `markdown-table-wrap.nvim` works internally. Public
-configuration and commands belong in `README.md` and Vim help; active work and
-release readiness belong in `CODEX_HANDOFF.md`.
+configuration and commands belong in `README.md` and Vim help; released behavior
+and release procedure belong in `CHANGELOG.md` and `PUBLISHING.md`.
 
 ## System Boundary
 
@@ -52,7 +52,9 @@ text or user intent.
 
 | Module | Responsibility |
 | --- | --- |
-| `init.lua` | Defaults, configuration validation, per-buffer overrides, commands, `<Plug>` mappings, autocommands, scheduling, and high-level view selection |
+| `init.lua` | Public API, per-Source policy/overrides, lifecycle orchestration, refresh scheduling, and high-level view selection |
+| `config.lua` | Owns immutable configuration defaults and returns validated, normalized copies for `setup()` |
+| `commands.lua` | Registers public user commands and stable global `<Plug>` action mappings against the public API |
 | `discovery.lua` | Finds candidate table ranges through deterministic Lua or explicit optional Tree-sitter discovery; records backend/fallback diagnostics |
 | `parser.lua` | Validates table structure and builds exact table/row/cell/delimiter Source models from a live buffer or a pure line array |
 | `markdown.lua` | Tokenizes supported inline Markdown inside cells and retains Source/render coordinates and target metadata |
@@ -118,8 +120,9 @@ to each segment.
 
 `render.render_table()` returns real lines and parallel line objects. A line
 object carries semantic highlight chunks and rendered cell ranges. Reader uses
-real lines so search, selection, and yank behave normally, then places one
-authoritative conceal/overlay extmark on each rendered table line. The overlay
+real lines so search and Visual selection/yank operate on rendered content,
+then places one authoritative conceal/overlay extmark on each rendered table
+line. The overlay
 prevents the Reader's Markdown filetype or another renderer from reparsing
 underscores and angle brackets and visually moving borders.
 
@@ -133,24 +136,29 @@ mutation boundary for the Reader cell mappings:
 ```text
 Reader cursor → logical rendered cell → Source span
        │                  │                 │
-       ├─ y + ic ─────────┴─ read raw text → registers
-       ├─ v + ic ─────────── select rendered segments (Visual overlay)
-       ├─ d/c + ic, c + ip ─ nvim_buf_set_text(Source span) → refresh Reader
-       └─ c (contextual) ─── set empty Source span → close Reader → Source Insert
+       ├─ guarded y/d + ic ─ native operator on exact Source selection
+       ├─ v + ic ────────── rendered overlay; temporary y/d/c/p Source operators
+       ├─ c + ic ────────── close Reader → exact Source cell change → Insert
+       ├─ c + other motion ─ close Reader → native Source change operator
+       └─ put / repeat ───── guarded one-span replacement → refresh Reader
 ```
 
-`yic` copies the source slice, not the displayed label. `dic`, `cic`, and
-`cip` replace only the cell's one-line Source span, leaving neighboring cells
-and delimiters untouched. Newlines from a register are flattened to spaces and
-multi-line or synthetic missing cells are rejected rather than causing an
-implicit row rewrite. A changedtick check refreshes a stale Reader projection
-before resolving a cell.
+`yic` copies the source slice, not the displayed label. Native Source
+operators own named/numbered/clipboard/black-hole register behavior for yank,
+delete, and change. `cic` completes and revalidates the Reader-to-Source
+transition before queuing the native change, so deletion and typed insertion
+form one undo block. Put/repeat replaces only the cell's one-line span and
+flattens register newlines to spaces. Multi-line or synthetic missing cells are
+rejected rather than causing an implicit row rewrite. Counts greater than one
+are rejected before mutation until multi-cell ordering has an explicit model.
 
-`vic` is installed as the `ic` Visual-mode text-object suffix after `v`, while
-the operator forms use `ic`/`ip` in operator-pending mode. This matters because
-a Normal-mode mapping whose lhs starts with `y`, `d`, or `v` loses to Vim's
-operator/Visual state during real keyboard input. Native blockwise Visual mode
-is still used over the rendered cell's first and last real lines. Blockwise
+`vic` is installed as the `ic` Visual-mode text-object suffix after `v`.
+Normal `y` and `d` are guarded Reader prefixes: they synchronously accept only
+the configured cell suffix, preserving an earlier count/register, and cancel
+any mismatch without allowing a native operator to touch rendered rows. This
+prevents accidental `yj`/`yk` from copying borders and `dj`/`dk` from raising
+E21 on the protected buffer. Native blockwise Visual mode is still used over
+the rendered cell's first and last real lines. Blockwise
 selection is deliberate: charwise Visual would include every column on
 intermediate wrapped lines. Native `v`, `V`, and block Visual remain unchanged;
 `reader.lua` mirrors
@@ -160,12 +168,20 @@ feedback. The overlay namespace is cleared on movement out of Visual, Reader
 close/abandon, and buffer cleanup. For a `vic` selection, the overlay uses each
 rendered segment's own byte range instead of one shared rectangle; this keeps
 CJK, wide icons, and variable UTF-8 byte lengths from highlighting the next
-column's border. Its temporary Visual `y` mapping copies the logical rendered
-segments without borders and then restores any previous Visual mapping. The
-overlay affects appearance only and never changes the Source selection
-semantics. In normal mode it adds no per-cell extmarks; only the currently
-selected Reader lines are overlaid, so large Readers retain the v0.4
-one-authoritative-extmark-per-rendered-line baseline.
+column's border. Temporary Visual `y`, `d`, `c`, `p`, and `P` mappings route a
+logical `vic` session to the raw Source cell, then restore every previous
+Visual mapping. Native Visual selections outside that session remain rendered
+Reader operations. In normal mode the overlay adds no per-cell extmarks; only
+the currently selected Reader lines are overlaid, so large Readers retain the
+v0.4 one-authoritative-extmark-per-rendered-line baseline.
+
+Successful delete/put operations record their Source changedtick and undo
+sequence. A `cic` session brackets inserted text with two temporary Source
+extmarks and records the replacement on `InsertLeave`. Reader's local `.`
+mapping repeats that logical mutation while changedtick matches, or after undo
+and redo return to the recorded undo sequence. Unrelated Source edits and an
+undo without redo invalidate it and delegate to the captured or native Source
+dot command. Source wipe clears repeat state.
 
 ## Rendered Copy And Export
 
@@ -224,7 +240,9 @@ modified flag, mappings, and integrations remain authoritative.
 
 There are several intentionally separate state layers:
 
-- `M.config`: validated global configuration produced by `setup()`.
+- `M.config`: validated global configuration produced by `config.resolve()`
+  during `setup()`; defaults and caller options are deep-copied before
+  normalization.
 - `M.state`: high-level Float ownership plus per-Source mode, auto-preview,
   pause, viewport, refresh token, signature, and mapping overrides.
 - `reader.lua`: Reader-buffer states and shared Source ownership. One Source may
@@ -232,7 +250,10 @@ There are several intentionally separate state layers:
   changedtick used to build its projection so cell actions can reject stale
   metadata safely. Logical cell segments and header lines are indexed during
   build, so cell actions and optional sticky-header updates do not scan the
-  complete rendered document on every cursor move.
+  complete rendered document on every cursor move. Internal consumers use
+  narrow, deep-copied summaries, line objects, cell segments, fallback
+  mappings, or one rendered table; the complete-state snapshot remains a
+  diagnostic boundary rather than a cursor-local hot path.
 - `inline.lua`: active Source buffers/tables/configs, per-window saved wrap
   options, and viewport offsets.
 - `cache.lua` / `discovery.lua`: derived data and diagnostics keyed by Source.
@@ -255,30 +276,44 @@ enters a window, the normal debounced auto-preview policy runs again.
 
 ## Lifecycle And Scheduling
 
-`setup()` validates configuration, clears derived caches, invalidates scheduled
-refresh epochs, recreates one augroup, registers public commands/mappings,
-applies the theme, and reconfigures surviving Reader views.
+`setup()` asks `config.lua` for a validated configuration, clears derived
+caches, invalidates scheduled refresh epochs, recreates one augroup, asks
+`commands.lua` to register public commands/mappings, applies the theme, and
+reconfigures surviving Reader views. Commands depend only on the public module
+surface passed to their registrar; configuration resolution does not mutate
+its defaults or the caller's option table.
 
 Relevant lifecycle events are debounced per Source buffer. Each scheduled
 refresh captures the Source's token and the global setup epoch; stale callbacks
-exit without touching state. Text changes refresh visible dependent Readers or
-recompute Inline. Resizes invalidate layout signatures. Buffer wipe releases
+exit without touching state, and unexpected callback failures are reported
+without escaping the scheduled boundary. Text changes refresh visible dependent
+Readers or recompute Inline. Resize events fan out to every affected visible
+Reader and schedule each distinct visible Source/Inline buffer once, instead of
+depending on whichever window happened to be current. Buffer wipe releases
 Reader/Inline state, caches, discovery status, mappings, pause state, viewport
 state, and scheduled tokens. Window close restores Inline-owned options.
 
-Reader open snapshots Source cursor/window options, sets Source `bufhidden` to
-`hide` while dependent Readers exist, builds the complete derived document,
-then switches the window to an unlisted protected scratch buffer. Explicit close
+Reader open snapshots Source cursor/window options, builds the complete derived
+document, prepares a scratch buffer, and sets Source `bufhidden` to `hide` while
+dependent Readers exist before switching the window to that unlisted protected
+view. Build, scratch preparation, window transition, and final window
+configuration are guarded stages. A failed stage restores Source
+ownership/options and deletes the disposable scratch buffer. Refresh builds
+against a copied configuration and commits lines, indexes, configuration, and
+changedtick together; a failed projection update restores the previous
+lines/overlay and always protects the Reader as non-modifiable. Explicit close
 maps the Reader cursor back to Source, restores options and ownership, and
 deletes the scratch buffer. `:write` in Reader delegates to the Source through
 `BufWriteCmd`; the Reader never owns edits.
 
 Cell changes are the exception to the general “Reader is protected” rule only
 in terms of their entry point: the Reader remains non-modifiable, while
-`cell_ops.lua` applies a guarded `nvim_buf_set_text()` directly to Source and
-then rebuilds the disposable projection. `cic`/`c` deliberately close the
-Reader before `startinsert` so Neovim's Insert mode, undo history, and buffer
-local plugins operate on the real Source buffer.
+`cell_ops.lua` selects the exact Source span inside `nvim_buf_call()` and lets
+native yank/delete operators update registers and undo history before rebuilding
+the disposable projection. `cic`/`c` deliberately close the Reader before
+queuing native Source change so Insert mode, undo history, and buffer-local
+plugins operate on the real Source buffer. The Reader transition and Source
+changedtick are revalidated before that command is queued.
 
 ## Context, Actions, Links, And Mappings
 
@@ -329,16 +364,25 @@ reference measurements and opt-in stress command live in
 `docs/performance.md`; future viewport/lazy materialization must preserve exact
 Source mapping, search/yank semantics, and renderer isolation.
 
+Reader-local actions must scale with the data they consume. Cell selection and
+refocus use `cell_segments`; link lookup copies one line object; context copies
+only a scalar summary; rendered-table copy copies only that table. Calling the
+full Reader state snapshot for any of those paths would make a single cursor
+action proportional to all rendered lines and should be treated as a
+performance regression.
+
 ## Extension Rules
 
 - Add new table syntax in `parser.lua` and the classified fixture corpus before
   teaching a view to special-case it.
 - Add inline syntax in `markdown.lua`, then verify wrapping and target metadata.
 - Add a cross-mode user operation to `actions.lua` and expose it through
-  context-aware commands or `<Plug>` mappings rather than hard-coding
-  mode-specific keys. Reader-only Source-span cell operations may stay in
-  `cell_ops.lua` while their semantics are experimental, but must still use
-  the shared context/source-span model and configurable mapping boundary.
+  context-aware entries in `commands.lua` rather than hard-coding mode-specific
+  keys. Reader-only Source-span cell operations may stay in `cell_ops.lua`
+  while their semantics are experimental, but must still use the shared
+  context/source-span model and configurable mapping boundary.
+- Add global defaults and normalization rules together in `config.lua`; never
+  mutate the module's defaults or the caller-owned setup table.
 - Add view-specific state to the owning view module; add only orchestration and
   per-Source policy to `init.lua`.
 - Add cache signatures whenever output depends on a new option.
