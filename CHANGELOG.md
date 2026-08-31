@@ -2,7 +2,7 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
-## Unreleased
+## 0.6.0 - Reader Semantics And Lifecycle Hardening
 
 ### Fixed
 

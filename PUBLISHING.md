@@ -9,9 +9,9 @@ rename its development branch as part of a release.
 - Repository: `ice345/markdown-table-wrap.nvim`
 - Remote: `origin` (`git@github.com:ice345/markdown-table-wrap.nvim.git`)
 - Development/release branch: `master`
-- Latest published tag: `v0.5.1`
-- Next planned release: `v0.6.0` (measured viewport/lazy materialization and
-  compatibility follow-up; see the maintainer-local `ROADMAP.md`)
+- Latest published tag: `v0.6.0`
+- Next planned release: not yet scheduled; the maintainer-local `ROADMAP.md`
+  retains the longer-term v1.0 public-contract work.
 - Supported Neovim baseline: 0.10+
 
 Verify these values rather than assuming the local checkout is current:
@@ -25,7 +25,7 @@ git tag --sort=-version:refname | head
 ```
 
 The v0.4.0 section below is the retained release record and checklist example;
-the same gates apply to v0.5.1 and later releases. Substitute the target
+the same gates apply to v0.6.0 and later releases. Substitute the target
 version and milestone scope from the maintainer-local `ROADMAP.md`. Release
 only from `master`, with no unrelated local changes, after the branch is up to
 date with `origin/master`.
@@ -383,6 +383,47 @@ Verification:
   `gg`/`G` pairs on the development machine.
 - The supported Neovim 0.10.4/stable CI matrix and the manual terminal matrix
   remain release gates.
+
+## v0.6.0 Release Notes
+
+### markdown-table-wrap.nvim v0.6.0
+
+v0.6.0 hardens Reader's Source-backed Vim semantics and failure boundaries
+without changing the canonical-Source architecture.
+
+Highlights:
+
+- `yic`, `dic`, `cic`, and logical `vic` operators now honor selected,
+  small-delete, yank-zero, and black-hole registers. Cell change is one undo
+  block, and logical `.` survives the matching undo/redo sequence.
+- Reader guards its `y` and `d` cell prefixes: mistyped motions such as
+  `yj`/`yk` cannot copy rendered borders, while `dj`/`dk`/`dd` no longer raise
+  E21. Native rendered copy remains available through Visual selection.
+- Native Source `c` motions, including `cip`, remain reachable. Cell put moves
+  to `:MarkdownTablePutCell` by default, with the previous `cip` behavior
+  retained as an explicit opt-in mapping.
+- Reader cell, link, context, fallback, and export operations use narrow
+  snapshots instead of deep-copying the full rendered document; indexed cell
+  refocus remains bounded on large tables.
+- Failed Reader open/refresh transitions roll back ownership, indexes,
+  changedticks, overlays, and protected-buffer state. Scheduled refresh errors
+  are contained, and resize refresh reaches every affected visible Reader.
+- Configuration normalization and command/`<Plug>` registration now live in
+  focused modules instead of expanding the lifecycle orchestrator.
+
+Verification:
+
+- 196 headless regression tests pass on Neovim 0.10.4 and 0.12.4, including
+  the complete CrossOver/Proton/Wine virtualization table, registers, counts,
+  macros, undo/redo, dot repeat, guarded typo sequences, lifecycle rollback,
+  resize fanout, and configuration isolation.
+- The parser reference benchmark on Neovim 0.12.4 measured about 26 ms for 10k
+  prose lines, 164 ms for 10k invalid pipe candidates, 22 ms for 500 small
+  tables, and 29 ms for 1k semantic rows.
+- The 4,002-Source-line/20,005-Reader-line reference remains fully
+  materialized: approximately 1.44 s cold open, 0.307 s refresh, 42 ms for 500
+  `gg`/`G` pairs, and 2.1 ms for 500 indexed local-cell reads on the
+  development machine.
 
 ## Future Releases
 

@@ -1,6 +1,6 @@
 local M = {}
 
-M.version = "0.5.1"
+M.version = "0.6.0"
 
 local config_module = require("markdown-table-wrap.config")
 M.config = config_module.defaults()
