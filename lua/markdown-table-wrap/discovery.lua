@@ -26,7 +26,7 @@ local function delimiter_candidate(line)
   local count = 0
   for cell in (compact .. "|"):gmatch("(.-)|") do
     local value = vim.trim(cell):gsub("%s+", ""):gsub("^:", ""):gsub(":$", "")
-    if #value < 3 or value:match("^%-+$") == nil then
+    if #value < 1 or value:match("^%-+$") == nil then
       return false
     end
     count = count + 1

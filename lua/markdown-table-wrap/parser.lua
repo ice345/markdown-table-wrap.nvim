@@ -184,7 +184,7 @@ end
 local function is_separator_cell(cell)
   local value = trim(cell):gsub("%s+", "")
   value = value:gsub("^:", ""):gsub(":$", "")
-  return #value >= 3 and value:match("^%-+$") ~= nil
+  return #value >= 1 and value:match("^%-+$") ~= nil
 end
 
 local function parse_alignment(cell)

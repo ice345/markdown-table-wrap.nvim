@@ -146,7 +146,7 @@ h.test("parser rejects table-like paragraphs without separator", function()
   end)
 end)
 
-h.test("parser rejects invalid GFM delimiter rows", function()
+h.test("parser accepts GFM-compliant short delimiter rows", function()
   local parser = require("markdown-table-wrap.parser")
 
   h.with_buffer({
@@ -155,8 +155,15 @@ h.test("parser rejects invalid GFM delimiter rows", function()
     "| 1 | 2 |",
   }, function(buf)
     local parsed = parser.parse_at_cursor(buf, 1)
-    h.assert_false("short delimiter rejected", parsed)
+    h.assert_true("short delimiter accepted", parsed ~= nil)
+    h.assert_eq("short delimiter column count", #parsed.header, 2)
+    h.assert_eq("short delimiter alignment left", parsed.align[1], "left")
+    h.assert_eq("short delimiter alignment left", parsed.align[2], "left")
   end)
+end)
+
+h.test("parser rejects mismatched delimiter column count", function()
+  local parser = require("markdown-table-wrap.parser")
 
   h.with_buffer({
     "| A | B |",
