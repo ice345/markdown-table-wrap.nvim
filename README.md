@@ -325,7 +325,9 @@ returns to the mapped Source line for editing.
 `<leader>mi` can be mapped to `:MarkdownTableToggleInline`:
 
 ```lua
-{ "<leader>mi", "<cmd>MarkdownTableToggleInline<cr>", desc = "Toggle Markdown table inline view" }
+keys = {
+  { "<leader>mi", "<cmd>MarkdownTableToggleInline<cr>", desc = "Toggle Markdown table inline view" }
+}
 ```
 
 The command enables Inline from Source or Reader. Pressing it again clears the
