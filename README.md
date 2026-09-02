@@ -304,9 +304,11 @@ The tested Vim-semantics contract is:
 
 Native buffer/window navigation only dismisses the disposable Reader view. It
 does not set the Source pause flag, so returning to that Source applies the
-normal automatic Reader policy again. Explicit close, Source edit, disabling
-auto-preview, or switching view does set the corresponding persistent user
-intent.
+normal automatic Reader policy again. The Reader cursor and window scroll are
+written onto Source on leave and restored when Reader reopens, including
+wrapped-table row offsets when Source has not moved. Explicit close, Source
+edit, disabling auto-preview, or switching view does set the corresponding
+persistent user intent.
 
 ### Choosing A View
 

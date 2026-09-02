@@ -391,7 +391,7 @@ function M.reader_preview(opts)
   M.state.inline_buf = nil
   M.state.last_signature[bufnr] = nil
   M.state.paused_buffers[bufnr] = nil
-  return reader.open(bufnr, config_for_buffer(bufnr))
+  return reader.open(bufnr, config_for_buffer(bufnr), { auto = opts.auto == true })
 end
 
 function M.pause_buffer(bufnr)
@@ -810,6 +810,8 @@ local function create_autocmds()
         reader.update_sticky_header(args.buf)
         return
       end
+      reader.invalidate_source_view(args.buf, vim.api.nvim_get_current_win())
+      require("markdown-table-wrap.inline").invalidate_window_view(args.buf, vim.api.nvim_get_current_win())
       if not is_markdown_buffer(args.buf) then
         return
       end
@@ -838,6 +840,7 @@ local function create_autocmds()
       if not is_markdown_buffer(bufnr) then
         return
       end
+      require("markdown-table-wrap.reader").invalidate_source_view(bufnr)
       if args.event == "TextChanged" or args.event == "TextChangedI" or args.event == "InsertLeave" then
         if require("markdown-table-wrap.reader").refresh_source(bufnr) > 0 then
           return
@@ -847,7 +850,11 @@ local function create_autocmds()
       if vim.api.nvim_win_get_buf(winid) ~= bufnr then
         winid = nil
       end
-      M.schedule_refresh({ bufnr = bufnr, winid = winid, silent = true })
+      M.schedule_refresh({
+        bufnr = bufnr,
+        winid = winid,
+        silent = true,
+      })
     end,
   })
 
@@ -931,7 +938,20 @@ local function create_autocmds()
   vim.api.nvim_create_autocmd({ "WinEnter", "BufWinEnter" }, {
     group = M.state.augroup,
     callback = function(args)
-      require("markdown-table-wrap.inline").attach_window(args.buf)
+      local bufnr = args.buf
+      local targets
+      if args.event == "WinEnter" then
+        targets = { vim.api.nvim_get_current_win() }
+      else
+        targets = vim.fn.win_findbuf(bufnr)
+        if #targets == 0 then
+          targets = { vim.api.nvim_get_current_win() }
+        end
+      end
+      for _, winid in ipairs(targets) do
+        require("markdown-table-wrap.inline").attach_window(bufnr, { restore_view = true, winid = winid })
+        require("markdown-table-wrap.reader").restore_source_view(bufnr, winid)
+      end
     end,
   })
 
@@ -988,7 +1008,10 @@ local function create_autocmds()
   vim.api.nvim_create_autocmd("WinClosed", {
     group = M.state.augroup,
     callback = function(args)
-      require("markdown-table-wrap.inline").detach_window(tonumber(args.match))
+      local winid = tonumber(args.match)
+      require("markdown-table-wrap.inline").detach_window(winid)
+      require("markdown-table-wrap.inline").clear_window_views(winid)
+      require("markdown-table-wrap.reader").clear_saved_views(nil, winid)
     end,
   })
 
@@ -1033,6 +1056,7 @@ function M.setup(opts)
   M.state.last_signature = {}
   M.state.visual_buffers = {}
   M.state.inline_buf = nil
+  require("markdown-table-wrap.reader").clear_saved_views()
   create_autocmds()
   require("markdown-table-wrap.commands").register(M)
   require("markdown-table-wrap.theme").apply(M.config)

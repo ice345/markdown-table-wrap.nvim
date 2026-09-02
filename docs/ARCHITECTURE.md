@@ -271,8 +271,12 @@ Source paused ──explicit preview/enable──► rendered view, pause cleare
 ```
 
 Native Reader `BufHidden` cleanup calls `reader.abandon()` and deletes only the
-disposable view. It must not set the Source pause flag. When the Source next
-enters a window, the normal debounced auto-preview policy runs again.
+disposable view. It must not set the Source pause flag. Before the scratch
+buffer is dropped, the Reader cursor, `topline`, and wrap offsets are mapped
+onto Source and stored per window. When the Source next enters a window, that
+viewport is applied first and the normal debounced auto-preview policy reopens
+Reader at the same place. Inline wrap/conceal attach and detach remember and
+restore `winsaveview()` so native buffer switches do not reset scroll.
 
 ## Lifecycle And Scheduling
 
@@ -291,20 +295,23 @@ Readers or recompute Inline. Resize events fan out to every affected visible
 Reader and schedule each distinct visible Source/Inline buffer once, instead of
 depending on whichever window happened to be current. Buffer wipe releases
 Reader/Inline state, caches, discovery status, mappings, pause state, viewport
-state, and scheduled tokens. Window close restores Inline-owned options.
+state, saved window views, and scheduled tokens. Window close restores
+Inline-owned options and drops per-window saved views.
 
-Reader open snapshots Source cursor/window options, builds the complete derived
-document, prepares a scratch buffer, and sets Source `bufhidden` to `hide` while
-dependent Readers exist before switching the window to that unlisted protected
-view. Build, scratch preparation, window transition, and final window
+Reader open snapshots Source cursor, window scroll, and window options, builds
+the complete derived document, prepares a scratch buffer, and sets Source
+`bufhidden` to `hide` while dependent Readers exist before switching the window
+to that unlisted protected view. Auto-reopen after a native leave prefers the
+saved Source-mapped viewport over the window's stale last-view of Source.
+Build, scratch preparation, window transition, and final window
 configuration are guarded stages. A failed stage restores Source
 ownership/options and deletes the disposable scratch buffer. Refresh builds
 against a copied configuration and commits lines, indexes, configuration, and
 changedtick together; a failed projection update restores the previous
 lines/overlay and always protects the Reader as non-modifiable. Explicit close
-maps the Reader cursor back to Source, restores options and ownership, and
-deletes the scratch buffer. `:write` in Reader delegates to the Source through
-`BufWriteCmd`; the Reader never owns edits.
+maps the Reader cursor and scroll back to Source, restores options and ownership,
+and deletes the scratch buffer. `:write` in Reader delegates to the Source
+through `BufWriteCmd`; the Reader never owns edits.
 
 Cell changes are the exception to the general “Reader is protected” rule only
 in terms of their entry point: the Reader remains non-modifiable, while

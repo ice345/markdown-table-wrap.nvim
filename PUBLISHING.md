@@ -132,8 +132,9 @@ several tables, links, escaped pipes, code spans, and mixed CJK/English text.
 - Wipe a rendered buffer and confirm reopening a document does not inherit stale
   viewport, timer, or view state.
 - Leave an automatically opened Reader through native buffer navigation, return
-  to its Source, and confirm Reader reopens. Explicit close/edit must still
-  report `paused=true` and remain in Source.
+  to its Source, and confirm Reader reopens at the previous cursor and scroll
+  position. Explicit close/edit must still report `paused=true` and remain in
+  Source.
 - Run `tests/benchmark.lua`, compare all scenarios with
   `docs/performance.md`, and inspect the selected discovery backend and cache
   stages with `:MarkdownTableInspect`.

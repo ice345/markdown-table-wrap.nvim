@@ -84,8 +84,9 @@ Default interaction:
   target it delegates to the Source mapping captured when Reader opened, or to
   native gx when available. Source-buffer gx is left untouched by default;
   native buffer/window navigation dismisses Reader without pausing Source, so
-  returning to an auto-preview Source restores Reader. Explicit close/edit or
-  disable actions keep their persistent pause semantics.
+  returning to an auto-preview Source restores Reader at the previous cursor
+  and window scroll. Explicit close/edit or disable actions keep their
+  persistent pause semantics.
   see |markdown-table-wrap-map-gx|.
 
 CELL OPERATIONS                              *markdown-table-wrap-cell-operations*

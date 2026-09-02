@@ -6,6 +6,11 @@ All notable changes to `markdown-table-wrap.nvim` are documented here.
 
 ### Fixed
 
+- Keep Reader cursor and window scroll across native buffer switches
+  (`:Buffers`, `:bnext`, Telescope, and similar) by mapping the rendered
+  viewport onto Source on leave and restoring it when Reader reopens.
+- Preserve Inline window scroll when wrap/conceal options are restored on
+  `BufLeave`/`BufWinEnter`.
 - Guard Reader's `y` and `d` cell prefixes so mistyped motions such as
   `yj`/`yk` cannot yank rendered borders and `dj`/`dk`/`dd` cannot raise E21;
   cancellation preserves the cursor, registers, Reader, and Source.

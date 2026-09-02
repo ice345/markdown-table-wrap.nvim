@@ -10,6 +10,7 @@ local active_buffers = {}
 local active_tables = {}
 local active_configs = {}
 local view_offsets = {}
+local saved_window_views = {}
 
 local function normalize_bufnr(bufnr)
   if not bufnr or bufnr == 0 then
@@ -369,6 +370,35 @@ local function show_insert(bufnr, table_info, config, rendered)
   end
 end
 
+local function window_has_owned_options(winid)
+  return saved_conceallevels[winid] ~= nil
+    or saved_concealcursors[winid] ~= nil
+    or saved_wraps[winid] ~= nil
+end
+
+local function snapshot_window_view(bufnr, winid)
+  winid = winid or vim.api.nvim_get_current_win()
+  if not vim.api.nvim_win_is_valid(winid) or vim.api.nvim_win_get_buf(winid) ~= bufnr then
+    return nil, winid
+  end
+  local ok, view = pcall(vim.api.nvim_win_call, winid, function()
+    return vim.fn.winsaveview()
+  end)
+  if ok and type(view) == "table" then
+    return view, winid
+  end
+  return nil, winid
+end
+
+local function restore_view_dict(winid, view)
+  if not view or not winid or not vim.api.nvim_win_is_valid(winid) then
+    return false
+  end
+  return pcall(vim.api.nvim_win_call, winid, function()
+    vim.fn.winrestview(view)
+  end)
+end
+
 function M.clear(bufnr)
   bufnr = normalize_bufnr(bufnr)
 
@@ -384,6 +414,23 @@ end
 
 function M.detach_window(winid)
   winid = winid or vim.api.nvim_get_current_win()
+  if vim.api.nvim_win_is_valid(winid) and window_has_owned_options(winid) then
+    local bufnr = vim.api.nvim_win_get_buf(winid)
+    local ok, view = pcall(vim.api.nvim_win_call, winid, function()
+      return vim.fn.winsaveview()
+    end)
+    if ok and type(view) == "table" then
+      saved_window_views[bufnr] = saved_window_views[bufnr] or {}
+      local previous = saved_window_views[bufnr][winid]
+      if not previous or previous.applied then
+        saved_window_views[bufnr][winid] = {
+          view = view,
+          changedtick = vim.api.nvim_buf_get_changedtick(bufnr),
+          applied = false,
+        }
+      end
+    end
+  end
   restore_render_window(winid)
 end
 
@@ -391,6 +438,7 @@ function M.dispose(bufnr)
   bufnr = normalize_bufnr(bufnr)
   M.clear(bufnr)
   view_offsets[bufnr] = nil
+  saved_window_views[bufnr] = nil
 end
 
 function M.reset_view(bufnr)
@@ -421,6 +469,8 @@ local function show_one(bufnr, table_info, config)
 end
 
 function M.show(bufnr, table_info, config)
+  bufnr = normalize_bufnr(bufnr)
+  local view, winid = snapshot_window_view(bufnr)
   ensure_highlights(config)
   M.clear(bufnr)
 
@@ -431,10 +481,13 @@ function M.show(bufnr, table_info, config)
   if config.inline_mode == "replace" then
     set_render_for_buffer(bufnr, config)
   end
+  restore_view_dict(winid, view)
   return rendered
 end
 
 function M.show_many(bufnr, tables, config)
+  bufnr = normalize_bufnr(bufnr)
+  local view, winid = snapshot_window_view(bufnr)
   ensure_highlights(config)
   M.clear(bufnr)
 
@@ -449,6 +502,7 @@ function M.show_many(bufnr, tables, config)
   if config.inline_mode == "replace" then
     set_render_for_buffer(bufnr, config)
   end
+  restore_view_dict(winid, view)
   return rendered
 end
 
@@ -519,10 +573,103 @@ function M.scroll_to(bufnr, position)
   return true
 end
 
-function M.attach_window(bufnr)
+function M.attach_window(bufnr, opts)
+  opts = opts or {}
   bufnr = normalize_bufnr(bufnr)
+  local winid = opts.winid or vim.api.nvim_get_current_win()
   if active_buffers[bufnr] and (active_configs[bufnr] or {}).inline_mode == "replace" then
     set_render_for_buffer(bufnr, active_configs[bufnr] or {})
+  end
+  if opts.restore_view then
+    M.restore_window_view(bufnr, winid)
+  end
+end
+
+function M.restore_window_view(bufnr, winid)
+  bufnr = normalize_bufnr(bufnr)
+  winid = winid or vim.api.nvim_get_current_win()
+  local by_win = saved_window_views[bufnr]
+  local saved = by_win and by_win[winid]
+  if not saved then
+    return false
+  end
+  local view = saved.view or saved
+  if type(saved) == "table" and saved.applied then
+    return false
+  end
+  if type(saved) == "table" and saved.changedtick and vim.api.nvim_buf_is_valid(bufnr) then
+    if saved.changedtick ~= vim.api.nvim_buf_get_changedtick(bufnr) then
+      by_win[winid] = nil
+      if next(by_win) == nil then
+        saved_window_views[bufnr] = nil
+      end
+      return false
+    end
+  end
+  if not view or not vim.api.nvim_win_is_valid(winid) then
+    return false
+  end
+  if vim.api.nvim_win_get_buf(winid) ~= bufnr then
+    return false
+  end
+  local ok = pcall(vim.api.nvim_win_call, winid, function()
+    vim.fn.winrestview(view)
+  end)
+  if ok then
+    by_win[winid] = nil
+    if next(by_win) == nil then
+      saved_window_views[bufnr] = nil
+    end
+  end
+  return ok
+end
+
+function M.invalidate_window_view(bufnr, winid)
+  bufnr = normalize_bufnr(bufnr)
+  winid = tonumber(winid) or vim.api.nvim_get_current_win()
+  local by_win = saved_window_views[bufnr]
+  local saved = by_win and by_win[winid]
+  if type(saved) ~= "table" or not saved.view then
+    return false
+  end
+  if saved.changedtick and vim.api.nvim_buf_is_valid(bufnr) then
+    if saved.changedtick ~= vim.api.nvim_buf_get_changedtick(bufnr) then
+      by_win[winid] = nil
+      if next(by_win) == nil then
+        saved_window_views[bufnr] = nil
+      end
+      return true
+    end
+  end
+  if not vim.api.nvim_win_is_valid(winid) or vim.api.nvim_win_get_buf(winid) ~= bufnr then
+    return false
+  end
+  local ok, view = pcall(vim.api.nvim_win_call, winid, function()
+    return vim.fn.winsaveview()
+  end)
+  if not ok or type(view) ~= "table" then
+    return false
+  end
+  if view.lnum ~= saved.view.lnum then
+    by_win[winid] = nil
+    if next(by_win) == nil then
+      saved_window_views[bufnr] = nil
+    end
+    return true
+  end
+  return false
+end
+
+function M.clear_window_views(winid)
+  winid = tonumber(winid)
+  if not winid then
+    return
+  end
+  for bufnr, by_win in pairs(saved_window_views) do
+    by_win[winid] = nil
+    if next(by_win) == nil then
+      saved_window_views[bufnr] = nil
+    end
   end
 end
 
