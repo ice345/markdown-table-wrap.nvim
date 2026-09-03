@@ -270,6 +270,12 @@ Reader ──explicit close/edit/disable──► Source paused
 Source paused ──explicit preview/enable──► rendered view, pause cleared
 ```
 
+Picker helpers such as `with_source()` reveal Source without setting
+persistent pause. They transiently suppress auto-preview while a buffer picker
+snapshots the listed-buffer list, then restore the previous pause flag. If the
+window is still on Source afterwards, a normal scheduled refresh may reopen
+Reader.
+
 Native Reader `BufHidden` cleanup calls `reader.abandon()` and deletes only the
 disposable view. It must not set the Source pause flag. When the Source next
 enters a window, the normal debounced auto-preview policy runs again.
@@ -324,9 +330,11 @@ context instead of branching on buffer names.
 
 File targets resolve relative to the Source path even when invoked from Reader
 or Float. Actions that change buffers first dispose of the temporary view and
-restore Source ownership. Reader passthrough mappings may run a named plugin
-action, run a captured mapping in Source context, or leave Reader before
-invocation. Captured mappings must be restored exactly.
+restore Source ownership. Picker helpers reveal Source without persistent pause
+so listed-buffer UIs can treat Reader or Float as the canonical document.
+Reader passthrough mappings may run a named plugin action, run a captured
+mapping in Source context, or leave Reader before invocation. Captured mappings
+must be restored exactly.
 
 ## Cache And Invalidation
 

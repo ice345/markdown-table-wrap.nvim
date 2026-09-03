@@ -330,6 +330,14 @@ COMMANDS                                      *markdown-table-wrap-commands*
     Report mode, Source/view identity, mapped cursor, current table/cell,
     width budget, cache state, and effective options.
 
+                                                   *:MarkdownTableWithSource*
+:MarkdownTableWithSource {cmd}
+    Leave Reader or Float so the canonical Source is the current listed
+    buffer, then run {cmd}. Use this before a buffer picker such as
+    :Buffers so Enter selects the last real listed file instead of the
+    Source behind the disposable view. Inline and ordinary buffers run
+    {cmd} unchanged. Persistent pause intent is preserved.
+
                                                           *:MarkdownTableHelp*
 :MarkdownTableHelp
     Open a compact action and configured-key reference. This command remains
@@ -764,6 +772,20 @@ resolve_source_buffer({bufnr})~
                          *markdown-table-wrap.resolve_source_buffer()*
     Return the canonical Source buffer behind Source, Inline, Reader, or
     Float.
+
+with_source({fn})~                      *markdown-table-wrap.with_source()*
+    If the current view is Reader or Float, reveal the canonical Source
+    without setting persistent pause, suppress auto-preview while {fn}
+    runs, then restore the previous pause flag. Buffer pickers that
+    exclude the current listed buffer therefore treat Source as "here"
+    and the last real listed file as the Enter target. If the window is
+    still on Source afterwards and Source was not paused, a normal
+    scheduled refresh may reopen Reader. Inline and ordinary buffers
+    just run {fn}.
+
+source_command({cmd})~              *markdown-table-wrap.source_command()*
+    Call |markdown-table-wrap.with_source()| around `vim.cmd({cmd})`.
+    `:MarkdownTableWithSource Buffers` is the command form.
 
 action({name}, {opts})~                       *markdown-table-wrap.action()*
     Run a stable mode-agnostic action. Common names are toggle_reader,

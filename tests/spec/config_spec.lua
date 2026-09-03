@@ -183,6 +183,7 @@ h.test("all documented commands exist after setup", function()
     "MarkdownTableOpenVSplit",
     "MarkdownTableOpenTab",
     "MarkdownTableInspect",
+    "MarkdownTableWithSource",
     "MarkdownTableHelp",
     "MarkdownTableScrollDown",
     "MarkdownTableScrollUp",

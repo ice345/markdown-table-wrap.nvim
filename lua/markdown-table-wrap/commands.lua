@@ -165,6 +165,15 @@ local function register_navigation_commands(plugin)
     end, { desc = description, force = true })
   end
 
+  vim.api.nvim_create_user_command("MarkdownTableWithSource", function(opts)
+    plugin.source_command(opts.args)
+  end, {
+    desc = "Leave Reader or Float, then run an Ex command as the canonical Source",
+    nargs = "+",
+    complete = "command",
+    force = true,
+  })
+
   vim.api.nvim_create_user_command("MarkdownTableInspect", function()
     plugin.action("inspect")
   end, { desc = "Inspect the active Markdown table view and Source context", force = true })

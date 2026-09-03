@@ -372,6 +372,24 @@ copy remains Markdown source. Reader search operates on rendered text. File
 navigation and buffer transitions resolve back to Source, while structural
 edits should be performed in Source.
 
+### Buffer pickers
+
+`:Buffers`, Telescope, and similar pickers treat the current listed buffer as
+"here" and the next most recently used listed buffer as the Enter target.
+Reader is an unlisted scratch view, so those pickers would otherwise select
+the markdown Source (a no-op after auto-preview reopens Reader).
+
+Reveal Source first, without treating that leave as a persistent pause:
+
+```lua
+vim.keymap.set("n", "<Leader><Leader>", function()
+  require("markdown-table-wrap").source_command("Buffers")
+end, { silent = true })
+```
+
+`:MarkdownTableWithSource Buffers` does the same from the command line. Inline
+and ordinary buffers are unchanged.
+
 ### Why Reader Avoids Wrap Leaks
 
 Inline replacement is tied to real source rows. When a raw Markdown table row is wider than the window and `wrap` is enabled, Neovim may create continuation screen rows underneath the extmark overlay. Conceal and virtual text cannot reliably replace those continuation rows on every terminal, which is why source fragments such as an extra `|` can appear.
@@ -445,6 +463,9 @@ inline and floating modes.
   `:MarkdownTableOpen`.
 - `:MarkdownTableInspect` shows active Source/view diagnostics suitable for a
   bug report.
+- `:MarkdownTableWithSource {cmd}` leaves Reader or Float, then runs `{cmd}`
+  as the canonical Source so buffer pickers such as `:Buffers` treat Enter as
+  the last real listed file.
 - `:MarkdownTableHelp` shows common actions and configured view keys.
 - `:MarkdownTableScrollDown` scrolls the rendered table view down without moving through source rows.
 - `:MarkdownTableScrollUp` scrolls the rendered table view up without moving through source rows.
@@ -809,6 +830,12 @@ local cache = require("markdown-table-wrap.cache").inspect(0)
   configuration.
 - `resolve_source_buffer(bufnr?)` returns the canonical Source buffer behind a
   Reader or Float.
+- `with_source(fn)` leaves Reader or Float so the canonical Source is current,
+  runs `fn`, then restores the previous pause flag. Auto-preview is suppressed
+  only while `fn` runs, so buffer pickers snapshot Source as the current listed
+  buffer. If the window is still on Source afterwards and Source was not
+  paused, a normal refresh may reopen Reader.
+- `source_command(cmd)` is `with_source()` around `vim.cmd(cmd)`.
 - `action(name, opts?)` runs the same stable action used by commands and
   `<Plug>` mappings. See `require("markdown-table-wrap.actions").names()` for
   the current set.

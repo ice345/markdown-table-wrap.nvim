@@ -2,6 +2,16 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
+## 0.6.1 - Buffer picker Source context
+
+### Added
+
+- Add `with_source()`, `source_command()`, and `:MarkdownTableWithSource` so
+  buffer pickers such as `:Buffers` treat Reader or Float as the canonical
+  Source. Enter then selects the last real listed file instead of the Source
+  behind the disposable view. Persistent pause intent is preserved; cancelling
+  the picker can reopen Reader through normal auto-preview.
+
 ## 0.6.0 - Reader Semantics And Lifecycle Hardening
 
 ### Fixed

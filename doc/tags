@@ -43,6 +43,7 @@
 :MarkdownTableToggleReader	markdown-table-wrap.txt	/*:MarkdownTableToggleReader*
 :MarkdownTableViewportLeft	markdown-table-wrap.txt	/*:MarkdownTableViewportLeft*
 :MarkdownTableViewportRight	markdown-table-wrap.txt	/*:MarkdownTableViewportRight*
+:MarkdownTableWithSource	markdown-table-wrap.txt	/*:MarkdownTableWithSource*
 :MarkdownTableYankCell	markdown-table-wrap.txt	/*:MarkdownTableYankCell*
 :MarkdownTableYankTable	markdown-table-wrap.txt	/*:MarkdownTableYankTable*
 markdown-table-wrap-api	markdown-table-wrap.txt	/*markdown-table-wrap-api*
@@ -75,5 +76,7 @@ markdown-table-wrap.get_buffer_config()	markdown-table-wrap.txt	/*markdown-table
 markdown-table-wrap.get_preview_mode()	markdown-table-wrap.txt	/*markdown-table-wrap.get_preview_mode()*
 markdown-table-wrap.get_state()	markdown-table-wrap.txt	/*markdown-table-wrap.get_state()*
 markdown-table-wrap.resolve_source_buffer()	markdown-table-wrap.txt	/*markdown-table-wrap.resolve_source_buffer()*
+markdown-table-wrap.source_command()	markdown-table-wrap.txt	/*markdown-table-wrap.source_command()*
 markdown-table-wrap.statusline()	markdown-table-wrap.txt	/*markdown-table-wrap.statusline()*
 markdown-table-wrap.txt	markdown-table-wrap.txt	/*markdown-table-wrap.txt*
+markdown-table-wrap.with_source()	markdown-table-wrap.txt	/*markdown-table-wrap.with_source()*

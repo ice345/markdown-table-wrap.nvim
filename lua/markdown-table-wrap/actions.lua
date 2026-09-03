@@ -14,23 +14,35 @@ local function context_for(opts)
   return context
 end
 
-local function leave_view(context)
+local function leave_view(context, opts)
+  opts = opts or {}
+  local pause = opts.pause ~= false
   if not context or (context.mode ~= "reader" and context.mode ~= "float") then
     return context and context.source_bufnr or nil
   end
 
+  local plugin = require("markdown-table-wrap")
   if context.mode == "float" then
     local source_winid = context.float and context.float.source_winid or nil
-    require("markdown-table-wrap").close_preview()
+    local source_bufnr = context.source_bufnr
+    local was_paused = plugin.state.paused_buffers[source_bufnr] == true
+    plugin.close_preview()
     if source_winid and vim.api.nvim_win_is_valid(source_winid) then
       vim.api.nvim_set_current_win(source_winid)
+    end
+    if source_bufnr and vim.api.nvim_buf_is_valid(source_bufnr) then
+      if pause then
+        plugin.pause_buffer(source_bufnr)
+      else
+        plugin.state.paused_buffers[source_bufnr] = was_paused or nil
+      end
     end
     return vim.api.nvim_get_current_buf() == context.source_bufnr and context.source_bufnr or nil
   end
 
   local source_bufnr = require("markdown-table-wrap.reader").close(context.view_bufnr)
-  if source_bufnr then
-    require("markdown-table-wrap").pause_buffer(source_bufnr)
+  if source_bufnr and pause then
+    plugin.pause_buffer(source_bufnr)
   end
   return source_bufnr
 end
@@ -275,6 +287,59 @@ for _, name in ipairs({
   actions[name .. "_table"] = function(context, opts)
     return table_edit_action(name, context, opts)
   end
+end
+
+---@param fn function
+---@return any
+function M.with_source(fn)
+  if type(fn) ~= "function" then
+    error("MarkdownTableWrap: with_source requires a function", 2)
+  end
+
+  local context = require("markdown-table-wrap.context").resolve({})
+  if not context or (context.mode ~= "reader" and context.mode ~= "float") then
+    return fn()
+  end
+
+  local plugin = require("markdown-table-wrap")
+  local source_bufnr = context.source_bufnr
+  local was_paused = plugin.state.paused_buffers[source_bufnr] == true
+  plugin.state.paused_buffers[source_bufnr] = true
+  plugin.state.refresh_tokens[source_bufnr] = (plugin.state.refresh_tokens[source_bufnr] or 0) + 1
+  leave_view(context, { pause = false })
+
+  local ok, result = pcall(fn)
+  if was_paused then
+    plugin.state.paused_buffers[source_bufnr] = true
+  else
+    plugin.state.paused_buffers[source_bufnr] = nil
+  end
+
+  if
+    not was_paused
+    and vim.api.nvim_buf_is_valid(source_bufnr)
+    and vim.api.nvim_get_current_buf() == source_bufnr
+  then
+    plugin.schedule_refresh({ bufnr = source_bufnr, silent = true })
+  end
+
+  if not ok then
+    error(result, 0)
+  end
+  return result
+end
+
+---@param command string
+---@return any
+function M.source_command(command)
+  command = type(command) == "string" and vim.trim(command) or ""
+  if command == "" then
+    notify("source_command requires an Ex command", vim.log.levels.ERROR)
+    return false
+  end
+  return M.with_source(function()
+    vim.cmd(command)
+  end)
 end
 
 function M.run(name, opts)

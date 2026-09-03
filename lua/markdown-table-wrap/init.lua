@@ -1,6 +1,6 @@
 local M = {}
 
-M.version = "0.6.0"
+M.version = "0.6.1"
 
 local config_module = require("markdown-table-wrap.config")
 M.config = config_module.defaults()
@@ -118,6 +118,18 @@ end
 ---@return boolean
 function M.action(name, opts)
   return require("markdown-table-wrap.actions").run(name, opts)
+end
+
+---@param fn function
+---@return any
+function M.with_source(fn)
+  return require("markdown-table-wrap.actions").with_source(fn)
+end
+
+---@param command string
+---@return any
+function M.source_command(command)
+  return require("markdown-table-wrap.actions").source_command(command)
 end
 
 ---@param opts? table
