@@ -185,22 +185,33 @@ h.test("copy follows the clipboard option instead of always writing unnamedplus"
   local plugin = require("markdown-table-wrap")
   plugin.setup({ auto_preview = false })
   local original_clipboard = vim.o.clipboard
+  local original_setreg = vim.fn.setreg
+  local system_registers = {}
+  vim.fn.setreg = function(register, value, kind)
+    if register == "+" or register == "*" then
+      system_registers[register] = { value = value, kind = kind }
+      return 0
+    end
+    return original_setreg(register, value, kind)
+  end
 
   local ok, err = pcall(function()
     h.with_buffer(table_lines(), function(buf)
       vim.bo[buf].filetype = "markdown"
       vim.api.nvim_win_set_cursor(0, { 3, 2 })
       vim.o.clipboard = ""
-      vim.fn.setreg("+", "plus sentinel", "v")
+      system_registers["+"] = { value = "plus sentinel", kind = "v" }
       local copied = plugin.export_table({ format = "tsv", silent = true })
       h.assert_true("export without clipboard integration succeeds", copied)
-      h.assert_eq("empty clipboard option leaves unnamedplus alone", vim.fn.getreg("+"), "plus sentinel")
+      h.assert_eq("empty clipboard option leaves unnamedplus alone", system_registers["+"].value, "plus sentinel")
 
       vim.o.clipboard = "unnamedplus"
       local _, csv = plugin.export_table({ format = "csv", silent = true })
-      h.assert_eq("unnamedplus receives the exported value", vim.fn.getreg("+"), csv)
+      h.assert_eq("unnamedplus receives the exported value", system_registers["+"].value, csv)
+      h.assert_eq("unnamedplus uses a characterwise register", system_registers["+"].kind, "v")
     end)
   end)
+  vim.fn.setreg = original_setreg
   vim.o.clipboard = original_clipboard
   if not ok then
     error(err, 0)
