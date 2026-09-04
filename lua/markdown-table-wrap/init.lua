@@ -222,8 +222,8 @@ local function restore_gx_mapping(bufnr)
   M.state.gx_callbacks[bufnr] = nil
 end
 
-local function invoke_gx_mapping(mapping)
-  return require("markdown-table-wrap.mappings").invoke(mapping, { native_gx = true })
+local function invoke_gx_mapping(mapping, bufnr)
+  return require("markdown-table-wrap.mappings").invoke(mapping, { native_gx = true, context_bufnr = bufnr })
 end
 
 local function attach_link_keymap(bufnr)
@@ -253,26 +253,21 @@ local function attach_link_keymap(bufnr)
       require("markdown-table-wrap.nav").open_link()
       return
     end
-    invoke_gx_mapping(M.state.gx_fallbacks[current_bufnr])
+    invoke_gx_mapping(M.state.gx_fallbacks[current_bufnr], current_bufnr)
   end
   vim.keymap.set("n", "gx", proxy, { buffer = bufnr, silent = true, desc = "Open Markdown table link" })
   M.state.gx_installed[bufnr] = true
   M.state.gx_callbacks[bufnr] = proxy
 end
 
-local function close_existing()
+local function close_existing(opts)
+  opts = opts or {}
   local source_bufnr = M.state.float_source_bufnr
   local source_winid = M.state.float_source_winid
   local origin = M.state.float_origin
+  local float_winid = M.state.win
+  local float_bufnr = M.state.buf
   local had_float = source_bufnr ~= nil
-  if M.state.win and vim.api.nvim_win_is_valid(M.state.win) then
-    vim.api.nvim_win_close(M.state.win, true)
-  end
-
-  if M.state.buf and vim.api.nvim_buf_is_valid(M.state.buf) then
-    vim.api.nvim_buf_delete(M.state.buf, { force = true })
-  end
-
   M.state.win = nil
   M.state.buf = nil
   M.state.float_source_bufnr = nil
@@ -280,6 +275,13 @@ local function close_existing()
   M.state.float_source_alt_bufnr = nil
   M.state.float_rendered = nil
   M.state.float_origin = nil
+
+  if float_winid and float_winid ~= opts.skip_win and vim.api.nvim_win_is_valid(float_winid) then
+    pcall(vim.api.nvim_win_close, float_winid, true)
+  end
+  if float_bufnr and float_bufnr ~= opts.skip_buf and vim.api.nvim_buf_is_valid(float_bufnr) then
+    pcall(vim.api.nvim_buf_delete, float_bufnr, { force = true })
+  end
   if had_float and source_bufnr and vim.api.nvim_buf_is_valid(source_bufnr) then
     require("markdown-table-wrap.events").emit("MarkdownTableWrapViewChanged", {
       mode = "source",
@@ -1062,7 +1064,8 @@ function M.scroll_view(delta)
     return
   end
 
-  local keys = delta > 0 and [[\<C-E>]] or [[\<C-Y>]]
+  local key = delta > 0 and "<C-e>" or "<C-y>"
+  local keys = vim.api.nvim_replace_termcodes(key, true, false, true)
   vim.cmd("normal! " .. tostring(math.max(1, math.abs(delta))) .. keys)
 end
 
@@ -1094,6 +1097,7 @@ local function create_autocmds()
         reader.update_sticky_header(args.buf)
         return
       end
+      reader.invalidate_source_view(args.buf, vim.api.nvim_get_current_win())
       if not is_auto_preview_buffer(args.buf) then
         return
       end
@@ -1108,6 +1112,14 @@ local function create_autocmds()
     end,
   })
 
+  vim.api.nvim_create_autocmd("WinScrolled", {
+    group = M.state.augroup,
+    callback = function(args)
+      local bufnr = args.buf ~= 0 and args.buf or vim.api.nvim_get_current_buf()
+      require("markdown-table-wrap.reader").invalidate_source_view(bufnr, vim.api.nvim_get_current_win())
+    end,
+  })
+
   vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "InsertLeave", "BufWinEnter" }, {
     group = M.state.augroup,
     callback = function(args)
@@ -1118,6 +1130,8 @@ local function create_autocmds()
       if require("markdown-table-wrap.reader").is_reader(bufnr) then
         return
       end
+
+      require("markdown-table-wrap.reader").invalidate_source_view(bufnr)
 
       if not is_auto_preview_buffer(bufnr) then
         return
@@ -1215,7 +1229,14 @@ local function create_autocmds()
   vim.api.nvim_create_autocmd({ "WinEnter", "BufWinEnter" }, {
     group = M.state.augroup,
     callback = function(args)
-      require("markdown-table-wrap.inline").attach_window(args.buf)
+      local windows = vim.fn.win_findbuf(args.buf)
+      if #windows == 0 then
+        windows = { vim.api.nvim_get_current_win() }
+      end
+      for _, winid in ipairs(windows) do
+        require("markdown-table-wrap.inline").attach_window(args.buf, { restore_view = true, winid = winid })
+        require("markdown-table-wrap.reader").restore_source_view(args.buf, winid)
+      end
     end,
   })
 
@@ -1247,6 +1268,11 @@ local function create_autocmds()
   vim.api.nvim_create_autocmd("BufWipeout", {
     group = M.state.augroup,
     callback = function(args)
+      if args.buf == M.state.buf then
+        close_existing({ skip_buf = args.buf })
+      elseif args.buf == M.state.float_source_bufnr then
+        close_existing()
+      end
       require("markdown-table-wrap.cell_ops").cleanup(args.buf)
       require("markdown-table-wrap.reader").cleanup(args.buf)
       require("markdown-table-wrap.inline").dispose(args.buf)
@@ -1273,7 +1299,13 @@ local function create_autocmds()
   vim.api.nvim_create_autocmd("WinClosed", {
     group = M.state.augroup,
     callback = function(args)
-      require("markdown-table-wrap.inline").detach_window(tonumber(args.match))
+      local winid = tonumber(args.match)
+      if winid and winid == M.state.win then
+        close_existing({ skip_win = winid })
+      end
+      require("markdown-table-wrap.inline").detach_window(winid)
+      require("markdown-table-wrap.inline").clear_window_views(winid)
+      require("markdown-table-wrap.reader").clear_saved_views(nil, winid)
     end,
   })
 
@@ -1330,6 +1362,7 @@ function M.setup(opts)
   M.state.last_signature = {}
   M.state.visual_buffers = {}
   M.state.inline_buf = nil
+  require("markdown-table-wrap.reader").clear_saved_views()
   create_autocmds()
   require("markdown-table-wrap.commands").register(M)
   require("markdown-table-wrap.theme").apply(M.config)

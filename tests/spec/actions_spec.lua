@@ -61,6 +61,7 @@ h.test("Reader passthrough can route custom H and L workflows", function()
   vim.cmd("normal H")
   h.assert_false("H leaves Reader", require("markdown-table-wrap.reader").is_reader(first_reader))
   h.assert_eq("H action advances from Source to the next buffer", vim.api.nvim_get_current_buf(), target_bufnr)
+  h.assert_eq("H navigation does not pause automatic Reader policy", plugin.state.paused_buffers[source_bufnr], nil)
 
   vim.api.nvim_set_current_buf(source_bufnr)
   local second_reader = plugin.reader_preview()
@@ -69,6 +70,47 @@ h.test("Reader passthrough can route custom H and L workflows", function()
   h.assert_eq("L invokes captured Source mapping exactly once", callback_calls, 1)
   h.assert_eq("L leaves Source visible", vim.api.nvim_get_current_buf(), source_bufnr)
 
+  delete_buffer(source_bufnr)
+  delete_buffer(target_bufnr)
+end)
+
+h.test("Reader buffer navigation returns to Reader while an explicit close returns to Source", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  plugin.setup({ auto_preview = true, preview_mode = "reader", debounce_ms = 0 })
+
+  local source_bufnr = vim.api.nvim_create_buf(true, false)
+  local target_bufnr = vim.api.nvim_create_buf(true, false)
+  vim.bo[source_bufnr].swapfile = false
+  vim.bo[target_bufnr].swapfile = false
+  vim.api.nvim_buf_set_lines(source_bufnr, 0, -1, false, table_lines)
+  vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, { "target" })
+  vim.bo[source_bufnr].filetype = "markdown"
+  vim.bo[source_bufnr].modified = false
+  vim.bo[target_bufnr].modified = false
+
+  vim.api.nvim_set_current_buf(source_bufnr)
+  local first_reader = plugin.reader_preview()
+  h.assert_true("Reader opens before temporary navigation", reader.is_reader(first_reader))
+  h.assert_true("next-buffer action succeeds", plugin.action("next_buffer"))
+  h.assert_eq("temporary navigation reaches target", vim.api.nvim_get_current_buf(), target_bufnr)
+  h.assert_eq("temporary navigation stays unpaused", plugin.state.paused_buffers[source_bufnr], nil)
+
+  vim.api.nvim_set_current_buf(source_bufnr)
+  vim.wait(200, function()
+    return reader.is_reader(vim.api.nvim_get_current_buf())
+  end, 5)
+  h.assert_true("returning after H/L-style navigation restores Reader", reader.is_reader(0))
+
+  h.assert_true("explicit Reader close succeeds", plugin.close_reader())
+  h.assert_true("explicit close records Source mode", plugin.state.paused_buffers[source_bufnr])
+  vim.api.nvim_set_current_buf(target_bufnr)
+  vim.api.nvim_set_current_buf(source_bufnr)
+  vim.wait(50)
+  h.assert_eq("returning after explicit close stays on Source", vim.api.nvim_get_current_buf(), source_bufnr)
+  h.assert_false("returning after explicit close does not reopen Reader", reader.is_reader(0))
+
+  plugin.state.paused_buffers[source_bufnr] = nil
   delete_buffer(source_bufnr)
   delete_buffer(target_bufnr)
 end)

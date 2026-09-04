@@ -56,7 +56,7 @@ end
 local function is_separator_cell(cell)
   local value = trim(cell):gsub("%s+", "")
   value = value:gsub("^:", ""):gsub(":$", "")
-  return #value >= 3 and value:match("^%-+$") ~= nil
+  return #value >= 1 and value:match("^%-+$") ~= nil
 end
 
 local function parse_alignment(cell)
@@ -412,11 +412,16 @@ local function parse_lines(lines, stop_lnum, opts)
 
   if opts and opts.ranges then
     for _, range in ipairs(opts.ranges) do
-      if not stop_lnum or range.start_lnum <= stop_lnum then
-        local table_info = parse_table_at(lines, range.start_lnum, references)
+      local lnum = range.start_lnum
+      local finish = math.min(range.end_lnum or range.start_lnum, stop_lnum or #lines)
+      while lnum <= finish do
+        local table_info = parse_table_at(lines, lnum, references)
         if table_info then
           table_info.discovery_backend = range.backend or "lua"
           table.insert(tables, table_info)
+          lnum = table_info.end_lnum + 1
+        else
+          lnum = lnum + 1
         end
       end
     end

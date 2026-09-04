@@ -7,6 +7,7 @@ local namespace = vim.api.nvim_create_namespace("markdown-table-wrap-reader")
 local visual_namespace = vim.api.nvim_create_namespace("markdown-table-wrap-reader-visual")
 local states = {}
 local source_states = {}
+local saved_views = {}
 
 local function notify_error(action, err)
   vim.notify("MarkdownTableWrap: " .. action .. ": " .. tostring(err), vim.log.levels.ERROR)
@@ -241,7 +242,8 @@ local function set_reader_keymaps(reader_bufnr)
 
   map(config.open_link, function()
     local reader = require("markdown-table-wrap.reader")
-    if reader.open_link(reader_bufnr, { silent = true }) then
+    local opened, handled = reader.open_link(reader_bufnr, { silent = true })
+    if opened or handled then
       return
     end
 
@@ -352,6 +354,12 @@ local function create_reader_buffer(source_bufnr)
     )
 
     vim.bo[reader_bufnr].filetype = vim.bo[source_bufnr].filetype
+    vim.api.nvim_create_autocmd("BufWinLeave", {
+      buffer = reader_bufnr,
+      callback = function()
+        require("markdown-table-wrap.reader").sync_view(reader_bufnr)
+      end,
+    })
     vim.api.nvim_create_autocmd("BufHidden", {
       buffer = reader_bufnr,
       once = true,
@@ -403,6 +411,277 @@ local function source_cursor_for(state, reader_lnum, reader_col)
   return source_lnum, source_col
 end
 
+local view_keys = { "lnum", "col", "curswant", "topline", "topfill", "leftcol", "skipcol" }
+
+local function copy_view(view)
+  local result = {}
+  for _, key in ipairs(view_keys) do
+    if view and view[key] ~= nil then
+      result[key] = view[key]
+    end
+  end
+  return result
+end
+
+local function save_view(source_bufnr, winid, snapshot)
+  if not source_bufnr or not winid or not snapshot then
+    return
+  end
+  saved_views[source_bufnr] = saved_views[source_bufnr] or {}
+  saved_views[source_bufnr][winid] = snapshot
+end
+
+local function get_saved_view(source_bufnr, winid)
+  local by_win = saved_views[source_bufnr]
+  return by_win and by_win[winid] or nil
+end
+
+local function clear_saved_view(source_bufnr, winid)
+  local by_win = saved_views[source_bufnr]
+  if not by_win then
+    return
+  end
+  if not winid then
+    saved_views[source_bufnr] = nil
+    return
+  end
+  by_win[winid] = nil
+  if next(by_win) == nil then
+    saved_views[source_bufnr] = nil
+  end
+end
+
+local function snapshot_is_current(snapshot, source_bufnr)
+  return snapshot
+    and vim.api.nvim_buf_is_valid(source_bufnr)
+    and snapshot.source_changedtick == vim.api.nvim_buf_get_changedtick(source_bufnr)
+end
+
+local function views_match(left, right)
+  if type(left) ~= "table" or type(right) ~= "table" then
+    return false
+  end
+  for _, key in ipairs({ "lnum", "col", "topline", "topfill", "leftcol", "skipcol" }) do
+    if (tonumber(left[key]) or 0) ~= (tonumber(right[key]) or 0) then
+      return false
+    end
+  end
+  return true
+end
+
+local function window_view(winid)
+  if not winid or not vim.api.nvim_win_is_valid(winid) then
+    return nil
+  end
+  local ok, view = pcall(vim.api.nvim_win_call, winid, function()
+    return vim.fn.winsaveview()
+  end)
+  return ok and type(view) == "table" and view or nil
+end
+
+local function reader_winid(state, reader_bufnr)
+  local winid = state and state.winid
+  if winid and vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_buf(winid) == reader_bufnr then
+    return winid
+  end
+  return vim.fn.win_findbuf(reader_bufnr)[1]
+end
+
+local function wrap_offset(mapping, reader_lnum, source_lnum)
+  local first = mapping and mapping[source_lnum]
+  if not first then
+    return 0
+  end
+  return math.max(0, (tonumber(reader_lnum) or first) - first)
+end
+
+local function capture_view(reader_bufnr, winid)
+  local state = states[reader_bufnr]
+  if not state or not vim.api.nvim_buf_is_valid(state.source_bufnr) then
+    return nil
+  end
+  winid = winid or reader_winid(state, reader_bufnr)
+  if not winid or not vim.api.nvim_win_is_valid(winid) or vim.api.nvim_win_get_buf(winid) ~= reader_bufnr then
+    return nil
+  end
+  local view = window_view(winid)
+  if not view then
+    return nil
+  end
+  local source_lnum, source_col = source_cursor_for(state, view.lnum, view.col)
+  local source_topline = state.reader_to_source[view.topline] or source_lnum
+  return {
+    winid = winid,
+    source_changedtick = vim.api.nvim_buf_get_changedtick(state.source_bufnr),
+    source_lnum = source_lnum,
+    source_col = source_col,
+    source_topline = source_topline,
+    cursor_offset = wrap_offset(state.source_to_reader, view.lnum, source_lnum),
+    topline_offset = wrap_offset(state.source_to_reader, view.topline, source_topline),
+    reader_col = view.col,
+    reader_view = copy_view(view),
+  }
+end
+
+local function clamp_lnum(bufnr, lnum)
+  return math.max(1, math.min(tonumber(lnum) or 1, vim.api.nvim_buf_line_count(bufnr)))
+end
+
+local function apply_source_view(source_bufnr, winid, snapshot)
+  if
+    not snapshot_is_current(snapshot, source_bufnr)
+    or not winid
+    or not vim.api.nvim_win_is_valid(winid)
+    or vim.api.nvim_win_get_buf(winid) ~= source_bufnr
+  then
+    return false
+  end
+  local lnum = clamp_lnum(source_bufnr, snapshot.source_lnum)
+  local topline = math.min(lnum, clamp_lnum(source_bufnr, snapshot.source_topline))
+  local line = vim.api.nvim_buf_get_lines(source_bufnr, lnum - 1, lnum, false)[1] or ""
+  local view = copy_view(snapshot.reader_view)
+  view.lnum = lnum
+  view.col = math.max(0, math.min(tonumber(snapshot.source_col) or 0, #line))
+  view.topline = topline
+  local ok = pcall(vim.api.nvim_win_call, winid, function()
+    vim.fn.winrestview(view)
+  end)
+  if ok then
+    snapshot.applied_source_view = copy_view(window_view(winid))
+  end
+  return ok
+end
+
+local function last_reader_line_for_source(built, source_lnum)
+  local first = built.source_to_reader[source_lnum]
+  if not first then
+    return nil
+  end
+  local last = first
+  for reader_lnum = first + 1, #(built.lines or {}) do
+    if built.reader_to_source[reader_lnum] ~= source_lnum then
+      break
+    end
+    last = reader_lnum
+  end
+  return last
+end
+
+local function map_source_line(built, source_lnum, offset)
+  local first = built.source_to_reader[source_lnum]
+  if not first then
+    return math.max(1, math.min(tonumber(source_lnum) or 1, #(built.lines or {})))
+  end
+  local last = last_reader_line_for_source(built, source_lnum) or first
+  return math.max(first, math.min(first + (tonumber(offset) or 0), last))
+end
+
+local function apply_reader_view(winid, built, snapshot)
+  if not snapshot or not winid or not vim.api.nvim_win_is_valid(winid) then
+    return false
+  end
+  local lnum = map_source_line(built, snapshot.source_lnum, snapshot.cursor_offset)
+  local topline = map_source_line(built, snapshot.source_topline, snapshot.topline_offset)
+  topline = math.min(lnum, topline)
+  local line = built.lines[lnum] or ""
+  local view = copy_view(snapshot.reader_view)
+  view.lnum = lnum
+  view.col = math.max(0, math.min(tonumber(snapshot.reader_col) or 0, #line))
+  view.topline = topline
+  return pcall(vim.api.nvim_win_call, winid, function()
+    vim.fn.winrestview(view)
+  end)
+end
+
+function M.sync_view(reader_bufnr)
+  reader_bufnr = normalize_bufnr(reader_bufnr)
+  local state = states[reader_bufnr]
+  if not state or state.closing then
+    return false
+  end
+  local snapshot = capture_view(reader_bufnr)
+  if not snapshot then
+    return false
+  end
+  save_view(state.source_bufnr, snapshot.winid, snapshot)
+  return true
+end
+
+function M.restore_source_view(source_bufnr, winid)
+  source_bufnr = normalize_bufnr(source_bufnr)
+  winid = tonumber(winid) or vim.api.nvim_get_current_win()
+  local snapshot = get_saved_view(source_bufnr, winid)
+  if not snapshot_is_current(snapshot, source_bufnr) then
+    clear_saved_view(source_bufnr, winid)
+    return false
+  end
+  if snapshot.applied_source_view then
+    return false
+  end
+  return apply_source_view(source_bufnr, winid, snapshot)
+end
+
+function M.invalidate_source_view(source_bufnr, winid)
+  source_bufnr = normalize_bufnr(source_bufnr)
+  local by_win = saved_views[source_bufnr]
+  if not by_win then
+    return false
+  end
+  if not winid then
+    if not vim.api.nvim_buf_is_valid(source_bufnr) then
+      saved_views[source_bufnr] = nil
+      return true
+    end
+    local tick = vim.api.nvim_buf_get_changedtick(source_bufnr)
+    local cleared = false
+    for saved_winid, snapshot in pairs(by_win) do
+      if snapshot.source_changedtick ~= tick then
+        by_win[saved_winid] = nil
+        cleared = true
+      end
+    end
+    if next(by_win) == nil then
+      saved_views[source_bufnr] = nil
+    end
+    return cleared
+  end
+  winid = tonumber(winid)
+  local snapshot = by_win[winid]
+  if not snapshot_is_current(snapshot, source_bufnr) then
+    clear_saved_view(source_bufnr, winid)
+    return snapshot ~= nil
+  end
+  if
+    snapshot.applied_source_view
+    and vim.api.nvim_win_is_valid(winid)
+    and vim.api.nvim_win_get_buf(winid) == source_bufnr
+    and not views_match(window_view(winid), snapshot.applied_source_view)
+  then
+    clear_saved_view(source_bufnr, winid)
+    return true
+  end
+  return false
+end
+
+function M.clear_saved_views(source_bufnr, winid)
+  source_bufnr = tonumber(source_bufnr)
+  winid = tonumber(winid)
+  if source_bufnr then
+    clear_saved_view(source_bufnr, winid)
+    return
+  end
+  if not winid then
+    saved_views = {}
+    return
+  end
+  for bufnr, by_win in pairs(saved_views) do
+    by_win[winid] = nil
+    if next(by_win) == nil then
+      saved_views[bufnr] = nil
+    end
+  end
+end
+
 function M.is_reader(bufnr)
   bufnr = normalize_bufnr(bufnr)
   if not vim.api.nvim_buf_is_valid(bufnr) then
@@ -436,7 +715,31 @@ function M.open(source_bufnr, config)
   end
 
   local winid = vim.api.nvim_get_current_win()
+  local saved = get_saved_view(source_bufnr, winid)
+  if saved and not snapshot_is_current(saved, source_bufnr) then
+    clear_saved_view(source_bufnr, winid)
+    saved = nil
+  end
+  if saved and not saved.applied_source_view then
+    apply_source_view(source_bufnr, winid, saved)
+  end
+  if saved and not views_match(window_view(winid), saved.applied_source_view) then
+    clear_saved_view(source_bufnr, winid)
+    saved = nil
+  end
+  local source_view = window_view(winid)
   local source_cursor = vim.api.nvim_win_get_cursor(winid)
+  local target_view = saved
+    or {
+      source_changedtick = vim.api.nvim_buf_get_changedtick(source_bufnr),
+      source_lnum = source_cursor[1],
+      source_col = source_cursor[2],
+      source_topline = source_view and source_view.topline or source_cursor[1],
+      cursor_offset = 0,
+      topline_offset = 0,
+      reader_col = source_cursor[2],
+      reader_view = copy_view(source_view),
+    }
   local source_alt_bufnr = vim.fn.bufnr("#")
   local source_options = {
     wrap = vim.wo[winid].wrap,
@@ -501,9 +804,11 @@ function M.open(source_bufnr, config)
   end
   local finalized, finalize_error = pcall(function()
     configure_window(winid, config)
-    local reader_lnum = built.source_to_reader[source_cursor[1]] or 1
-    local reader_line = built.lines[reader_lnum] or ""
-    vim.api.nvim_win_set_cursor(winid, { reader_lnum, math.min(source_cursor[2], #reader_line) })
+    if not apply_reader_view(winid, built, target_view) then
+      local reader_lnum = built.source_to_reader[source_cursor[1]] or 1
+      local reader_line = built.lines[reader_lnum] or ""
+      vim.api.nvim_win_set_cursor(winid, { reader_lnum, math.min(source_cursor[2], #reader_line) })
+    end
     M.update_sticky_header(reader_bufnr, winid)
   end)
   if not finalized then
@@ -533,10 +838,12 @@ function M.open(source_bufnr, config)
   require("markdown-table-wrap.events").emit("MarkdownTableWrapReaderEnter", event_data)
   require("markdown-table-wrap.events").emit("MarkdownTableWrapViewChanged", event_data)
   require("markdown-table-wrap.events").emit("MarkdownTableWrapRendered", event_data)
+  clear_saved_view(source_bufnr, winid)
   return reader_bufnr
 end
 
-function M.close(reader_bufnr)
+function M.close(reader_bufnr, opts)
+  opts = opts or {}
   reader_bufnr = normalize_bufnr(reader_bufnr)
   local state = states[reader_bufnr]
   if not state or not vim.api.nvim_buf_is_valid(state.source_bufnr) then
@@ -552,6 +859,7 @@ function M.close(reader_bufnr)
     return state.source_bufnr
   end
 
+  local snapshot = capture_view(reader_bufnr, winid)
   local reader_cursor = vim.api.nvim_win_get_cursor(winid)
   local source_lnum, source_col = source_cursor_for(state, reader_cursor[1], reader_cursor[2])
   -- The Reader mirrors source's modified flag so :x and ZZ save correctly.
@@ -568,7 +876,14 @@ function M.close(reader_bufnr)
   end
 
   restore_window(state)
-  vim.api.nvim_win_set_cursor(winid, { source_lnum, source_col })
+  if not apply_source_view(state.source_bufnr, winid, snapshot) then
+    vim.api.nvim_win_set_cursor(winid, { source_lnum, source_col })
+  end
+  if opts.preserve_view and snapshot then
+    save_view(state.source_bufnr, winid, snapshot)
+  else
+    clear_saved_view(state.source_bufnr, winid)
+  end
 
   states[reader_bufnr] = nil
   release_source(state, reader_bufnr)
@@ -807,7 +1122,10 @@ function M.open_link(reader_bufnr, opts)
     return false
   end
   local context = require("markdown-table-wrap.context").resolve({ bufnr = reader_bufnr })
-  return context and require("markdown-table-wrap.links").open_at_context(context, opts) or false
+  if not context then
+    return false, false
+  end
+  return require("markdown-table-wrap.links").open_at_context(context, opts)
 end
 
 function M.abandon(reader_bufnr)
@@ -815,6 +1133,8 @@ function M.abandon(reader_bufnr)
   if not state or state.closing then
     return false
   end
+
+  M.sync_view(reader_bufnr)
 
   if vim.api.nvim_buf_is_valid(reader_bufnr) then
     M.clear_visual_selection(reader_bufnr)
@@ -847,6 +1167,7 @@ function M.abandon(reader_bufnr)
 end
 
 function M.cleanup(reader_bufnr)
+  clear_saved_view(reader_bufnr)
   local state = states[reader_bufnr]
   if state then
     M.clear_visual_selection(reader_bufnr)

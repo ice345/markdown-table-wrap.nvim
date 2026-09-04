@@ -14,22 +14,25 @@ local function context_for(opts)
   return context
 end
 
-local function leave_view(context)
+local function leave_view(context, opts)
+  opts = opts or {}
   if not context or (context.mode ~= "reader" and context.mode ~= "float") then
     return context and context.source_bufnr or nil
   end
 
   if context.mode == "float" then
     local source_winid = context.float and context.float.source_winid or nil
-    require("markdown-table-wrap").close_preview({ restore_origin = false })
+    require("markdown-table-wrap").close_preview({ restore_origin = false, pause = opts.pause ~= false })
     if source_winid and vim.api.nvim_win_is_valid(source_winid) then
       vim.api.nvim_set_current_win(source_winid)
     end
     return vim.api.nvim_get_current_buf() == context.source_bufnr and context.source_bufnr or nil
   end
 
-  local source_bufnr = require("markdown-table-wrap.reader").close(context.view_bufnr)
-  if source_bufnr then
+  local source_bufnr = require("markdown-table-wrap.reader").close(context.view_bufnr, {
+    preserve_view = opts.preserve_view == true,
+  })
+  if source_bufnr and opts.pause ~= false then
     require("markdown-table-wrap").pause_buffer(source_bufnr)
   end
   return source_bufnr
@@ -108,7 +111,10 @@ actions.viewport_right = function(_, opts)
 end
 
 local function buffer_command(context, command)
-  if (context.mode == "reader" or context.mode == "float") and not leave_view(context) then
+  if
+    (context.mode == "reader" or context.mode == "float")
+    and not leave_view(context, { pause = false, preserve_view = true })
+  then
     return false
   end
   local ok, err = pcall(vim.cmd, command)
@@ -131,12 +137,12 @@ actions.alternate_buffer = function(context)
   if context.mode == "reader" then
     local summary = require("markdown-table-wrap.reader").summary(context.view_bufnr)
     target = summary and summary.source_alt_bufnr or nil
-    if not leave_view(context) then
+    if not leave_view(context, { pause = false, preserve_view = true }) then
       return false
     end
   elseif context.mode == "float" then
     target = context.float and context.float.source_alt_bufnr or nil
-    if not leave_view(context) then
+    if not leave_view(context, { pause = false, preserve_view = true }) then
       return false
     end
   end
@@ -154,7 +160,10 @@ actions.select_buffer = function(context, opts)
     notify("the requested buffer is not valid", vim.log.levels.ERROR)
     return false
   end
-  if (context.mode == "reader" or context.mode == "float") and not leave_view(context) then
+  if
+    (context.mode == "reader" or context.mode == "float")
+    and not leave_view(context, { pause = false, preserve_view = true })
+  then
     return false
   end
   vim.api.nvim_win_set_buf(0, target)

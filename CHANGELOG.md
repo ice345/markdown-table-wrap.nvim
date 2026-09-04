@@ -44,6 +44,21 @@ All notable changes to `markdown-table-wrap.nvim` are documented here.
 
 ### Fixed
 
+- Accept compact GFM delimiter cells containing one or more hyphens, with the
+  same rule shared by discovery and parsing; continue scanning a candidate
+  range when an earlier table-like block is structurally rejected.
+- Preserve Reader and Inline cursor/scroll views across native or configured
+  temporary buffer navigation. Reader snapshots are per Source/window and are
+  discarded after Source cursor, scroll, or content changes; explicit close
+  still pauses and returns to Source.
+- Make next/previous/alternate/selected-buffer actions leave Reader or Float
+  without recording an explicit pause, so passthrough `H`/`L` returns to the
+  mode from which navigation began.
+- Route Reader, native-fallback, and standalone Float link opening through the
+  external-scheme policy; expand `~/` paths from `HOME` without Vim command
+  substitution.
+- Clear Float ownership on external window close and Source/Float wipeout, and
+  send Reader/Float scroll commands as real control-key termcodes.
 - Prevent a queued automatic Reader refresh from immediately replacing a Float
   opened from Reader through a real leader mapping.
 - Keep Float navigation and hidden-column viewport movement on logical cells,

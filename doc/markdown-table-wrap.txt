@@ -721,7 +721,10 @@ mappings~                              *markdown-table-wrap-mappings*
     mappings.reader.passthrough explicitly captures a Source mapping. A value
     may name a plugin action such as "next_buffer", or use a table containing
     policy = "leave", "source", or "view". No passthrough is installed by
-    default.
+    default. The next_buffer, previous_buffer, alternate_buffer, and explicit
+    buffer-selection actions are temporary navigation: they do not set the
+    Source pause flag. Returning to an automatic Reader Source rebuilds Reader
+    at its saved cursor and scroll position; a paused Source remains Source.
 
     mappings.reader.cell controls Source-aware operations on the logical cell
     under the Reader cursor. Its defaults are yic (raw Source yank), vic

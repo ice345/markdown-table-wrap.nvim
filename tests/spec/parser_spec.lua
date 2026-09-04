@@ -155,7 +155,7 @@ h.test("parser rejects table-like paragraphs without separator", function()
   end)
 end)
 
-h.test("parser rejects invalid GFM delimiter rows", function()
+h.test("parser accepts GFM-compliant short delimiter rows", function()
   local parser = require("markdown-table-wrap.parser")
 
   h.with_buffer({
@@ -164,8 +164,15 @@ h.test("parser rejects invalid GFM delimiter rows", function()
     "| 1 | 2 |",
   }, function(buf)
     local parsed = parser.parse_at_cursor(buf, 1)
-    h.assert_false("short delimiter rejected", parsed)
+    h.assert_true("short delimiter accepted", parsed ~= nil)
+    h.assert_eq("short delimiter column count", #parsed.header, 2)
+    h.assert_eq("short delimiter first alignment", parsed.align[1], "left")
+    h.assert_eq("short delimiter second alignment", parsed.align[2], "left")
   end)
+end)
+
+h.test("parser rejects mismatched delimiter column count", function()
+  local parser = require("markdown-table-wrap.parser")
 
   h.with_buffer({
     "| A | B |",
@@ -174,6 +181,23 @@ h.test("parser rejects invalid GFM delimiter rows", function()
   }, function(buf)
     local parsed = parser.parse_at_cursor(buf, 1)
     h.assert_false("mismatched delimiter count rejected", parsed)
+  end)
+end)
+
+h.test("discovery keeps scanning after a rejected table-like block", function()
+  local parser = require("markdown-table-wrap.parser")
+
+  h.with_buffer({
+    "- | A | B |",
+    "  | --- | --- |",
+    "| Real | Table |",
+    "| --- | --- |",
+    "| 1 | 2 |",
+  }, function(buf)
+    local tables = parser.parse_all(buf)
+    h.assert_eq("real table after rejected list candidate is discovered", #tables, 1)
+    h.assert_eq("real table starts at its own header", tables[1].start_lnum, 3)
+    h.assert_eq("real table reaches its body row", tables[1].end_lnum, 5)
   end)
 end)
 

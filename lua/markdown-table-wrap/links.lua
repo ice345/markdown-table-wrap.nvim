@@ -114,7 +114,11 @@ function M.classify(raw, opts)
 
   local path_part, anchor = split_anchor(raw)
   if vim.startswith(path_part, "~/") then
-    path_part = vim.fn.expand(path_part)
+    local home = vim.env.HOME
+    if not home or home == "" then
+      return { kind = "unresolved", raw = raw, reason = "HOME is unavailable", label = opts.label }
+    end
+    path_part = home .. path_part:sub(2)
   end
   local line = nil
   local line_path, line_number = path_part:match("^(.-):(%d+)$")
@@ -460,11 +464,11 @@ function M.open_at_context(context, opts)
   local targets, col = M.targets(context)
   local selected = target_at_cursor(targets, col)
   if selected then
-    return M.open_target(selected, context, opts)
+    return M.open_target(selected, context, opts), true
   end
   if #targets == 0 then
     notify("no Markdown link target is available at the current position", vim.log.levels.INFO, opts)
-    return false
+    return false, false
   end
 
   vim.ui.select(targets, {
@@ -477,7 +481,7 @@ function M.open_at_context(context, opts)
       M.open_target(choice, context, opts)
     end
   end)
-  return true
+  return true, true
 end
 
 return M

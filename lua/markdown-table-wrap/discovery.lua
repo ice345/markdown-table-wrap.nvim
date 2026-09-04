@@ -14,7 +14,7 @@ local function delimiter_candidate(line)
   for _, segment in ipairs(pipes.segments(line or "")) do
     local cell = line:sub(segment.start_col, segment.end_col)
     local value = vim.trim(cell):gsub("%s+", ""):gsub("^:", ""):gsub(":$", "")
-    if #value < 3 or value:match("^%-+$") == nil then
+    if #value < 1 or value:match("^%-+$") == nil then
       return false
     end
     count = count + 1

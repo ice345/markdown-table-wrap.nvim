@@ -323,6 +323,49 @@ h.test("reader gx opens table link metadata", function()
   vim.ui.open = original_open
 end)
 
+h.test("reader gx refuses unsafe rendered schemes without invoking native fallback", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  local original_open = vim.ui.open
+  local opened = {}
+  vim.ui.open = function(url)
+    table.insert(opened, url)
+  end
+  plugin.setup({
+    auto_preview = false,
+    preview_mode = "reader",
+    link = { allowed_schemes = { "http", "https", "mailto" } },
+  })
+
+  for _, url in ipairs({ "javascript://danger", "javascript:alert(1)", "data:text/plain,danger" }) do
+    h.with_buffer({
+      "| Name | Link |",
+      "| --- | --- |",
+      "| Unsafe | [open](" .. url .. ") |",
+    }, function(source_bufnr)
+      vim.bo[source_bufnr].filetype = "markdown"
+      local reader_bufnr = plugin.reader_preview()
+      local state = reader.get_state(reader_bufnr)
+      local target
+      for row, line_object in ipairs(state.line_objects) do
+        for _, chunk in ipairs(type(line_object) == "table" and line_object.chunks or {}) do
+          if chunk.kind == "link" then
+            target = { row, chunk.start_col }
+          end
+        end
+      end
+      h.assert_true("unsafe Reader target is rendered", target ~= nil)
+      vim.api.nvim_win_set_cursor(0, target)
+      vim.cmd("normal gx")
+      h.assert_eq("unsafe Reader target never reaches the OS", #opened, 0)
+      plugin.close_reader()
+      plugin.state.paused_buffers[source_bufnr] = nil
+    end)
+  end
+
+  vim.ui.open = original_open
+end)
+
 h.test("reader gx uses the source fallback only outside rendered links", function()
   local plugin = require("markdown-table-wrap")
   local reader = require("markdown-table-wrap.reader")

@@ -57,10 +57,23 @@ function M.invoke(mapping, opts)
     end
 
     if opts.native_gx then
-      local target = opts.target or vim.fn.expand("<cfile>")
-      if target ~= "" and vim.ui and type(vim.ui.open) == "function" then
-        vim.ui.open(target)
-        return true
+      local raw = opts.target or vim.fn.expand("<cfile>")
+      if raw ~= "" then
+        local source_bufnr = opts.context_bufnr
+        local source_path = source_bufnr
+            and vim.api.nvim_buf_is_valid(source_bufnr)
+            and vim.api.nvim_buf_get_name(source_bufnr)
+          or nil
+        local target = require("markdown-table-wrap.links").classify(raw, { source_path = source_path })
+        local config = source_bufnr
+            and vim.api.nvim_buf_is_valid(source_bufnr)
+            and require("markdown-table-wrap").get_buffer_config(source_bufnr)
+          or nil
+        return require("markdown-table-wrap.links").open_target(target, {
+          source_bufnr = source_bufnr,
+          source_path = source_path,
+          config = config,
+        }, { silent = true })
       end
     end
 

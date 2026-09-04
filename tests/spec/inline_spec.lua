@@ -157,6 +157,52 @@ h.test("floating preview gx opens the rendered link under the cursor", function(
   vim.ui.open = original_open
 end)
 
+h.test("standalone floating preview gx enforces the scheme allowlist", function()
+  local parser = require("markdown-table-wrap.parser")
+  local render = require("markdown-table-wrap.render")
+  local original_open = vim.ui.open
+  local opened
+  vim.ui.open = function(url)
+    opened = url
+  end
+
+  h.with_buffer({
+    "| Name | Link |",
+    "| --- | --- |",
+    "| Unsafe | [open](javascript://danger) |",
+  }, function(buf)
+    local parsed = parser.parse_at_cursor(buf, 3)
+    local rendered = render.render_table(parsed, {
+      max_width_ratio = 0.9,
+      min_col_width = 4,
+      max_col_width = 80,
+      use_unicode_border = true,
+      table_border = "rounded",
+      row_separator = true,
+      border = "rounded",
+      link = { allowed_schemes = { "http", "https" } },
+    })
+    local _, win = render.open_float(rendered, {
+      border = "rounded",
+      link = { allowed_schemes = { "http", "https" } },
+    })
+    local target
+    for row, line_object in ipairs(rendered.line_objects) do
+      for _, chunk in ipairs(line_object.chunks or {}) do
+        if chunk.kind == "link" then
+          target = { row, chunk.start_col }
+        end
+      end
+    end
+    vim.api.nvim_win_set_cursor(win, target)
+    vim.cmd("normal gx")
+    h.assert_eq("unsafe standalone Float target never reaches the OS", opened, nil)
+    vim.api.nvim_win_close(win, true)
+  end)
+
+  vim.ui.open = original_open
+end)
+
 h.test("floating preview preserves inline rendering in render_all mode", function()
   local plugin = require("markdown-table-wrap")
   local inline = require("markdown-table-wrap.inline")

@@ -61,7 +61,10 @@ plugins' extmarks are outside a headless process:
    user's original winbar on exit.
 9. Test native `:bnext`, `:bprevious`, and `<C-^>`, plus configured custom
    `H`/`L`, Bufferline, Telescope, and Harpoon transitions with a modified
-   Source buffer.
+   Source buffer. Returning to an unpaused Source must restore the same Reader
+   cursor/wrapped-row offset and viewport; moving or scrolling Source before
+   reopen must win over the saved Reader view. Inline must retain its per-window
+   native cursor and viewport too.
 10. Test Source-relative file, anchor, split, and tab opening from Reader and
     Float, including local `file:` URIs, a refused remote-host `file:` URI, an
     untrusted custom scheme, and a missing target that must preserve the

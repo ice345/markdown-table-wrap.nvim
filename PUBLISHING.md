@@ -9,9 +9,9 @@ rename its development branch as part of a release.
 - Repository: `ice345/markdown-table-wrap.nvim`
 - Remote: `origin` (`git@github.com:ice345/markdown-table-wrap.nvim.git`)
 - Development/release branch: `master`
-- Latest published tag: `v0.7.0`
-- Next planned release: not yet scheduled; the maintainer-local `ROADMAP.md`
-  retains the longer-term v1.0 public-contract work.
+- Latest published tag: `v0.6.0`
+- Current local release candidate: `v0.7.0`; it is not published until the
+  maintainer explicitly approves the final diff and release gates.
 - Supported Neovim baseline: 0.10+
 
 Verify these values rather than assuming the local checkout is current:
@@ -183,7 +183,9 @@ several tables, links, escaped pipes, code spans, and mixed CJK/English text.
 - Confirm native `:bnext`, `:bprevious`, and `<C-^>` leave Reader without a
   listed scratch buffer or lost Source changes, including with `hidden` off.
 - Confirm custom `H`/`L`, Bufferline, Telescope, and Harpoon transitions using
-  explicit Reader passthrough or leave-then-delegate actions.
+  explicit Reader passthrough or leave-then-delegate actions. Returning to an
+  unpaused Source must restore its Reader cursor and viewport; explicit close
+  must remain in Source.
 - Open the same Source in two windows with different widths. Confirm independent
   Readers, Source edit refresh, and cleanup after closing either Reader.
 - Run `:MarkdownTableInspect`, `:MarkdownTableHelp`, and the statusline API in
@@ -194,7 +196,8 @@ several tables, links, escaped pipes, code spans, and mixed CJK/English text.
 - Confirm fenced table-shaped text is ignored, including backtick and tilde
   fences.
 - Confirm escaped pipes and pipes inside single/multiple-backtick code spans.
-- Confirm invalid delimiter rows and adjacent pipe-like prose are rejected.
+- Confirm compact one-hyphen GFM delimiter cells are accepted, while malformed
+  delimiter rows and adjacent pipe-like prose are rejected.
 - Exercise the large invalid-pipe regression fixture and verify editing remains
   responsive.
 - Render a long table and verify border highlighting does not create one extmark

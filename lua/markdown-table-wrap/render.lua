@@ -6,6 +6,7 @@ local utf8 = require("markdown-table-wrap.utf8")
 
 local M = {}
 local float_namespace = vim.api.nvim_create_namespace("markdown-table-wrap-float")
+local float_states = {}
 
 local unicode = {
   top_left = "┌",
@@ -755,6 +756,14 @@ function M.open_float(rendered, config)
   vim.bo[buf].swapfile = false
   vim.bo[buf].filetype = "markdown-table-wrap"
   vim.bo[buf].modifiable = false
+  float_states[buf] = { rendered = rendered, config = config }
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    buffer = buf,
+    once = true,
+    callback = function()
+      float_states[buf] = nil
+    end,
+  })
 
   local editor_width = vim.o.columns
   local editor_height = vim.o.lines - vim.o.cmdheight
@@ -790,8 +799,10 @@ function M.open_float(rendered, config)
 
     -- `open_float()` is also a public low-level renderer and can be used
     -- without plugin-owned Source state. Preserve that standalone behavior.
+    local current = float_states[buf] or { rendered = rendered, config = config }
+    local current_rendered = current.rendered or rendered
     local cursor = vim.api.nvim_win_get_cursor(win)
-    local line_object = rendered.line_objects and rendered.line_objects[cursor[1]]
+    local line_object = current_rendered.line_objects and current_rendered.line_objects[cursor[1]]
     for _, chunk in ipairs(line_object and line_object.chunks or {}) do
       if
         (chunk.kind == "link" or chunk.kind == "image")
@@ -800,7 +811,9 @@ function M.open_float(rendered, config)
         and cursor[2] >= chunk.start_col
         and cursor[2] < chunk.end_col
       then
-        vim.ui.open(chunk.url)
+        local links = require("markdown-table-wrap.links")
+        local target = links.classify(chunk.url, { kind = chunk.kind })
+        links.open_target(target, { mode = "source", config = current.config or config }, {})
         return
       end
     end
@@ -871,6 +884,7 @@ function M.update_float(buf, rendered, config)
   if not ok then
     return false, err
   end
+  float_states[buf] = { rendered = rendered, config = config }
   return true
 end
 

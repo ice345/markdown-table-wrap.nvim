@@ -689,6 +689,398 @@ h.test("returning to a Source after native buffer navigation restores automatic 
   delete_buffer(target_bufnr)
 end)
 
+h.test("native buffer navigation restores Reader cursor and viewport", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  local original_scrolloff = vim.o.scrolloff
+  local winid = vim.api.nvim_get_current_win()
+  local original_height = vim.api.nvim_win_get_height(winid)
+
+  plugin.setup({ auto_preview = true, preview_mode = "reader", debounce_ms = 0 })
+  vim.o.scrolloff = 0
+  vim.api.nvim_win_set_height(winid, 8)
+
+  local lines = {}
+  for index = 1, 40 do
+    table.insert(lines, "Paragraph line " .. index)
+  end
+  vim.list_extend(lines, { "", "| A | B |", "| --- | --- |", "| one | two |" })
+
+  local source_bufnr = new_markdown_buffer(lines)
+  local target_bufnr = vim.api.nvim_create_buf(true, false)
+  vim.bo[target_bufnr].swapfile = false
+  vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, { "temporary target" })
+
+  vim.api.nvim_set_current_buf(source_bufnr)
+  local old_reader = plugin.reader_preview()
+  vim.fn.winrestview({ lnum = 25, col = 0, topline = 18, leftcol = 0 })
+  local expected = vim.fn.winsaveview()
+
+  vim.api.nvim_set_current_buf(target_bufnr)
+  vim.wait(100, function()
+    return not vim.api.nvim_buf_is_valid(old_reader)
+  end, 5)
+  h.assert_eq("native leave does not pause Reader policy", plugin.state.paused_buffers[source_bufnr], nil)
+
+  vim.api.nvim_set_current_buf(source_bufnr)
+  vim.wait(200, function()
+    return reader.is_reader(vim.api.nvim_get_current_buf())
+  end, 5)
+  local restored = vim.fn.winsaveview()
+  h.assert_eq("Reader cursor survives native buffer navigation", restored.lnum, expected.lnum)
+  h.assert_eq("Reader topline survives native buffer navigation", restored.topline, expected.topline)
+
+  plugin.close_reader()
+  plugin.state.paused_buffers[source_bufnr] = nil
+  vim.o.scrolloff = original_scrolloff
+  if vim.api.nvim_win_is_valid(winid) then
+    vim.api.nvim_win_set_height(winid, original_height)
+  end
+  delete_buffer(source_bufnr)
+  delete_buffer(target_bufnr)
+end)
+
+h.test("Source horizontal movement invalidates a wrapped Reader snapshot", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  local winid = vim.api.nvim_get_current_win()
+  local original_width = vim.api.nvim_win_get_width(winid)
+  local original_height = vim.api.nvim_win_get_height(winid)
+
+  plugin.setup({
+    auto_preview = true,
+    preview_mode = "reader",
+    debounce_ms = 40,
+    max_width_ratio = 1,
+    min_col_width = 4,
+    max_col_width = 16,
+  })
+
+  local source_bufnr = new_markdown_buffer({
+    "Before",
+    "| Name | Description |",
+    "| --- | --- |",
+    "| Row | content that wraps across several rendered rows |",
+    "After",
+  })
+  local target_bufnr = vim.api.nvim_create_buf(true, false)
+  vim.bo[target_bufnr].swapfile = false
+  vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, { "temporary target" })
+  vim.api.nvim_win_set_width(winid, 48)
+  vim.api.nvim_win_set_height(winid, 6)
+
+  vim.api.nvim_set_current_buf(source_bufnr)
+  local old_reader = plugin.reader_preview()
+  local built = reader._build(source_bufnr, plugin.get_buffer_config(source_bufnr))
+  local first = built.source_to_reader[4]
+  local wrapped = first
+  for lnum = first + 1, #built.lines do
+    if built.reader_to_source[lnum] ~= 4 then
+      break
+    end
+    wrapped = lnum
+  end
+  h.assert_true("test row wraps onto multiple Reader lines", wrapped > first)
+  vim.fn.winrestview({ lnum = wrapped, col = 0, topline = math.max(1, wrapped - 2), leftcol = 0 })
+
+  h.assert_true("H/L-style leave succeeds", plugin.action("next_buffer"))
+  h.assert_eq("H/L-style leave reaches target", vim.api.nvim_get_current_buf(), target_bufnr)
+  h.assert_false("temporary Reader is disposed", reader.is_reader(old_reader))
+
+  vim.api.nvim_set_current_buf(source_bufnr)
+  vim.api.nvim_win_set_cursor(winid, { 4, 5 })
+  vim.api.nvim_exec_autocmds("CursorMoved", { buffer = source_bufnr, modeline = false })
+  vim.wait(250, function()
+    return reader.is_reader(vim.api.nvim_get_current_buf())
+  end, 5)
+  h.assert_eq("reopened Reader follows the newly moved Source", vim.api.nvim_win_get_cursor(winid)[1], first)
+  h.assert_true("stale wrapped offset is not replayed", vim.api.nvim_win_get_cursor(winid)[1] ~= wrapped)
+
+  plugin.close_reader()
+  plugin.state.paused_buffers[source_bufnr] = nil
+  vim.api.nvim_win_set_width(winid, original_width)
+  vim.api.nvim_win_set_height(winid, original_height)
+  delete_buffer(source_bufnr)
+  delete_buffer(target_bufnr)
+end)
+
+h.test("Source-only scrolling replaces rather than replays the old Reader viewport", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  local winid = vim.api.nvim_get_current_win()
+  local original_height = vim.api.nvim_win_get_height(winid)
+  local original_scrolloff = vim.o.scrolloff
+  plugin.setup({ auto_preview = true, preview_mode = "reader", debounce_ms = 40 })
+  vim.o.scrolloff = 0
+  vim.api.nvim_win_set_height(winid, 8)
+
+  local lines = {}
+  for index = 1, 40 do
+    table.insert(lines, "Paragraph line " .. index)
+  end
+  vim.list_extend(lines, { "", "| A | B |", "| --- | --- |", "| one | two |" })
+  local source_bufnr = new_markdown_buffer(lines)
+  local target_bufnr = vim.api.nvim_create_buf(true, false)
+  vim.bo[target_bufnr].swapfile = false
+  vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, { "temporary target" })
+
+  vim.api.nvim_set_current_buf(source_bufnr)
+  plugin.reader_preview()
+  vim.fn.winrestview({ lnum = 25, col = 0, topline = 18, leftcol = 0 })
+  plugin.action("next_buffer")
+  vim.api.nvim_set_current_buf(source_bufnr)
+  vim.fn.winrestview({ lnum = 25, col = 0, topline = 20, leftcol = 0 })
+  vim.api.nvim_exec_autocmds("WinScrolled", { modeline = false })
+
+  vim.wait(250, function()
+    return reader.is_reader(vim.api.nvim_get_current_buf())
+  end, 5)
+  h.assert_eq("Reader uses the Source's newer topline", vim.fn.winsaveview().topline, 20)
+
+  plugin.close_reader()
+  plugin.state.paused_buffers[source_bufnr] = nil
+  vim.o.scrolloff = original_scrolloff
+  vim.api.nvim_win_set_height(winid, original_height)
+  delete_buffer(source_bufnr)
+  delete_buffer(target_bufnr)
+end)
+
+h.test("Source changes invalidate saved Reader view data", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  local winid = vim.api.nvim_get_current_win()
+  local original_height = vim.api.nvim_win_get_height(winid)
+  local original_scrolloff = vim.o.scrolloff
+  plugin.setup({ auto_preview = true, preview_mode = "reader", debounce_ms = 0 })
+  vim.o.scrolloff = 0
+  vim.api.nvim_win_set_height(winid, 8)
+
+  local lines = {}
+  for index = 1, 40 do
+    table.insert(lines, "Paragraph line " .. index)
+  end
+  vim.list_extend(lines, { "", "| A | B |", "| --- | --- |", "| one | two |" })
+  local source_bufnr = new_markdown_buffer(lines)
+  local target_bufnr = vim.api.nvim_create_buf(true, false)
+  vim.bo[target_bufnr].swapfile = false
+  vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, { "temporary target" })
+
+  vim.api.nvim_set_current_buf(source_bufnr)
+  local old_reader = plugin.reader_preview()
+  vim.fn.winrestview({ lnum = 25, col = 0, topline = 18, leftcol = 0 })
+  vim.api.nvim_set_current_buf(target_bufnr)
+  vim.wait(100, function()
+    return not vim.api.nvim_buf_is_valid(old_reader)
+  end, 5)
+  vim.api.nvim_buf_set_lines(source_bufnr, 0, 1, false, { "Changed paragraph line 1" })
+
+  vim.api.nvim_set_current_buf(source_bufnr)
+  vim.wait(200, function()
+    return reader.is_reader(vim.api.nvim_get_current_buf())
+  end, 5)
+  h.assert_true("changed Source does not reuse old Reader cursor", vim.api.nvim_win_get_cursor(winid)[1] ~= 25)
+  h.assert_true("changed Source does not reuse old Reader topline", vim.fn.winsaveview().topline ~= 18)
+
+  plugin.close_reader()
+  plugin.state.paused_buffers[source_bufnr] = nil
+  vim.o.scrolloff = original_scrolloff
+  vim.api.nvim_win_set_height(winid, original_height)
+  delete_buffer(source_bufnr)
+  delete_buffer(target_bufnr)
+end)
+
+h.test("Reader viewport snapshots are isolated per Source window", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  local original_scrolloff = vim.o.scrolloff
+  plugin.setup({ auto_preview = false, preview_mode = "reader", debounce_ms = 0 })
+  vim.o.scrolloff = 0
+
+  local lines = {}
+  for index = 1, 40 do
+    table.insert(lines, "Paragraph line " .. index)
+  end
+  vim.list_extend(lines, { "", "| A | B |", "| --- | --- |", "| one | two |" })
+  local source_bufnr = new_markdown_buffer(lines)
+  local target_bufnr = vim.api.nvim_create_buf(true, false)
+  vim.bo[target_bufnr].swapfile = false
+  vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, { "temporary target" })
+
+  local win_a = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_buf(win_a, source_bufnr)
+  vim.cmd("vsplit")
+  local win_b = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_call(win_b, function()
+    vim.fn.winrestview({ lnum = 3, col = 0, topline = 1, leftcol = 0 })
+  end)
+  local expected_b = vim.api.nvim_win_call(win_b, function()
+    return vim.fn.winsaveview()
+  end)
+
+  vim.api.nvim_set_current_win(win_a)
+  local old_reader = plugin.reader_preview()
+  plugin.enable_auto_preview()
+  vim.api.nvim_win_call(win_a, function()
+    vim.fn.winrestview({ lnum = 25, col = 0, topline = 18, leftcol = 0 })
+  end)
+  vim.api.nvim_win_set_buf(win_a, target_bufnr)
+  vim.wait(100, function()
+    return not vim.api.nvim_buf_is_valid(old_reader)
+  end, 5)
+
+  local unchanged_b = vim.api.nvim_win_call(win_b, function()
+    return vim.fn.winsaveview()
+  end)
+  h.assert_eq("other Source window keeps its cursor", unchanged_b.lnum, expected_b.lnum)
+  h.assert_eq("other Source window keeps its topline", unchanged_b.topline, expected_b.topline)
+
+  vim.api.nvim_set_current_win(win_a)
+  vim.api.nvim_win_set_buf(win_a, source_bufnr)
+  vim.wait(200, function()
+    return reader.is_reader(vim.api.nvim_win_get_buf(win_a))
+  end, 5)
+  local restored_a = vim.api.nvim_win_call(win_a, function()
+    return vim.fn.winsaveview()
+  end)
+  h.assert_eq("Reader window restores its own cursor", restored_a.lnum, 25)
+  h.assert_eq("Reader window restores its own topline", restored_a.topline, 18)
+
+  vim.api.nvim_set_current_win(win_a)
+  plugin.close_reader()
+  plugin.state.paused_buffers[source_bufnr] = nil
+  if vim.api.nvim_win_is_valid(win_b) then
+    vim.api.nvim_win_close(win_b, true)
+  end
+  vim.o.scrolloff = original_scrolloff
+  delete_buffer(source_bufnr)
+  delete_buffer(target_bufnr)
+end)
+
+h.test("Inline preview preserves each window view across buffer switches", function()
+  local plugin = require("markdown-table-wrap")
+  local original_scrolloff = vim.o.scrolloff
+  local winid = vim.api.nvim_get_current_win()
+  local original_height = vim.api.nvim_win_get_height(winid)
+
+  plugin.setup({ auto_preview = true, preview_mode = "inline", render_all = true, debounce_ms = 0 })
+  vim.o.scrolloff = 0
+  vim.api.nvim_win_set_height(winid, 8)
+  local lines = {}
+  for index = 1, 40 do
+    table.insert(lines, "Paragraph line " .. index)
+  end
+  vim.list_extend(lines, { "", "| A | B |", "| --- | --- |", "| one | two |" })
+  local source_bufnr = new_markdown_buffer(lines)
+  local target_bufnr = vim.api.nvim_create_buf(true, false)
+  vim.bo[target_bufnr].swapfile = false
+  vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, { "temporary target" })
+
+  vim.api.nvim_set_current_buf(source_bufnr)
+  plugin.refresh_auto({ force = true })
+  vim.fn.winrestview({ lnum = 25, col = 0, topline = 18, leftcol = 0 })
+  local expected = vim.fn.winsaveview()
+  vim.api.nvim_set_current_buf(target_bufnr)
+  vim.api.nvim_set_current_buf(source_bufnr)
+  vim.wait(100, function()
+    local view = vim.fn.winsaveview()
+    return view.lnum == expected.lnum and view.topline == expected.topline
+  end, 5)
+  local restored = vim.fn.winsaveview()
+  h.assert_eq("Inline cursor survives buffer switch", restored.lnum, expected.lnum)
+  h.assert_eq("Inline topline survives buffer switch", restored.topline, expected.topline)
+
+  vim.o.scrolloff = original_scrolloff
+  vim.api.nvim_win_set_height(winid, original_height)
+  delete_buffer(source_bufnr)
+  delete_buffer(target_bufnr)
+end)
+
+h.test("externally closed or orphaned Float state is cleared", function()
+  local plugin = require("markdown-table-wrap")
+  plugin.setup({ auto_preview = false, preview_mode = "float" })
+
+  local function source_buffer()
+    local bufnr = vim.api.nvim_create_buf(true, false)
+    vim.bo[bufnr].swapfile = false
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, table_lines)
+    vim.bo[bufnr].filetype = "markdown"
+    vim.bo[bufnr].modified = false
+    return bufnr
+  end
+
+  local first_source = source_buffer()
+  vim.api.nvim_set_current_buf(first_source)
+  plugin.float_preview()
+  local float_winid = plugin.state.win
+  local float_bufnr = plugin.state.buf
+  vim.api.nvim_win_close(float_winid, true)
+  h.assert_eq("external Float close clears window state", plugin.state.win, nil)
+  h.assert_eq("external Float close clears buffer state", plugin.state.buf, nil)
+  h.assert_eq("external Float close clears Source identity", plugin.state.float_source_bufnr, nil)
+  h.assert_true("external Float close wipes scratch buffer", not vim.api.nvim_buf_is_valid(float_bufnr))
+
+  local second_source = source_buffer()
+  vim.api.nvim_set_current_buf(second_source)
+  plugin.float_preview()
+  local orphan_winid = plugin.state.win
+  local source_winid = plugin.state.float_source_winid
+  local replacement = vim.api.nvim_create_buf(true, false)
+  vim.bo[replacement].swapfile = false
+  vim.api.nvim_win_set_buf(source_winid, replacement)
+  vim.api.nvim_buf_delete(second_source, { force = true })
+  h.assert_eq("wiping Float Source clears Source identity", plugin.state.float_source_bufnr, nil)
+  h.assert_eq("wiping Float Source clears rendered state", plugin.state.float_rendered, nil)
+  h.assert_true("wiping Float Source closes its Float", not vim.api.nvim_win_is_valid(orphan_winid))
+
+  delete_buffer(first_source)
+  delete_buffer(second_source)
+  delete_buffer(replacement)
+end)
+
+h.test("Reader and Float scroll actions move the real viewport", function()
+  local plugin = require("markdown-table-wrap")
+  plugin.setup({ auto_preview = false, preview_mode = "reader" })
+  local winid = vim.api.nvim_get_current_win()
+  local original_height = vim.api.nvim_win_get_height(winid)
+  local original_scrolloff = vim.o.scrolloff
+  vim.o.scrolloff = 0
+  vim.api.nvim_win_set_height(winid, 8)
+
+  local lines = {}
+  for index = 1, 35 do
+    table.insert(lines, "Paragraph line " .. index)
+  end
+  vim.list_extend(lines, { "", "| A | B |", "| --- | --- |", "| one | two |" })
+  local source_bufnr = new_markdown_buffer(lines)
+  vim.api.nvim_set_current_buf(source_bufnr)
+  plugin.reader_preview()
+  vim.fn.winrestview({ lnum = 12, col = 0, topline = 5, leftcol = 0 })
+  local reader_topline = vim.fn.winsaveview().topline
+  plugin.scroll_view(2)
+  h.assert_true("Reader scroll-down changes topline", vim.fn.winsaveview().topline > reader_topline)
+  plugin.close_reader()
+  plugin.state.paused_buffers[source_bufnr] = nil
+
+  local table_only = { "| A | B |", "| --- | --- |" }
+  for index = 1, 30 do
+    table.insert(table_only, string.format("| row %d | value %d |", index, index))
+  end
+  vim.api.nvim_buf_set_lines(source_bufnr, 0, -1, false, table_only)
+  vim.bo[source_bufnr].modified = false
+  vim.api.nvim_win_set_cursor(winid, { 3, 0 })
+  plugin.float_preview()
+  vim.fn.winrestview({ lnum = 12, col = 0, topline = 3, leftcol = 0 })
+  local float_topline = vim.fn.winsaveview().topline
+  plugin.scroll_view(2)
+  h.assert_true("Float scroll-down changes topline", vim.fn.winsaveview().topline > float_topline)
+  plugin.close_preview()
+  plugin.state.paused_buffers[source_bufnr] = nil
+
+  vim.o.scrolloff = original_scrolloff
+  vim.api.nvim_win_set_height(winid, original_height)
+  delete_buffer(source_bufnr)
+end)
+
 h.test("gx delegates ordinary text to the previous buffer-local mapping", function()
   local plugin = require("markdown-table-wrap")
   local fallback_calls = 0

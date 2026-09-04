@@ -60,6 +60,42 @@ h.test("external link opening enforces the configured scheme allowlist", functio
   vim.ui.open = original_open
 end)
 
+h.test("native gx fallback cannot bypass the external scheme allowlist", function()
+  local mappings = require("markdown-table-wrap.mappings")
+  local original_open = vim.ui.open
+  local opened
+  vim.ui.open = function(target)
+    opened = target
+  end
+
+  h.with_buffer({ "javascript://danger" }, function(bufnr)
+    vim.bo[bufnr].filetype = "markdown"
+    h.assert_false(
+      "native fallback refuses javascript",
+      mappings.invoke(nil, { native_gx = true, target = "javascript://danger", context_bufnr = bufnr })
+    )
+    h.assert_eq("refused native fallback never reaches the OS", opened, nil)
+  end)
+
+  vim.ui.open = original_open
+end)
+
+h.test("home-relative link classification does not invoke expand command substitution", function()
+  local links = require("markdown-table-wrap.links")
+  local original_expand = vim.fn.expand
+  local expand_called = false
+  vim.fn.expand = function()
+    expand_called = true
+    error("expand must not be used for link paths")
+  end
+  local ok, target = pcall(links.classify, "~/notes.md", { source_path = "/tmp/index.md" })
+  vim.fn.expand = original_expand
+
+  h.assert_true("home-relative path remains classifiable", ok and target ~= nil)
+  h.assert_false("path classification never calls expand", expand_called)
+  h.assert_eq("home-relative path uses HOME literally", target.path, vim.fs.normalize(vim.env.HOME .. "/notes.md"))
+end)
+
 h.test("absolute files line targets and file anchors open at the requested location", function()
   local plugin = require("markdown-table-wrap")
   local target_path = vim.fn.tempname() .. ".md"

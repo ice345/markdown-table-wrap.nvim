@@ -101,8 +101,9 @@ Reader cursor positions and view-independent actions to return to Source.
 ## Discovery And Parsing
 
 Normal `discovery.backend = "auto"` intentionally chooses the Lua scanner. The
-scanner skips fenced code and returns candidate ranges; `parser.lua` remains
-responsible for structural validation and Markdown block boundaries. Explicit
+scanner skips fenced code and returns candidate ranges; `parser.lua` scans each
+range until every valid table has been considered and remains responsible for
+structural validation and Markdown block boundaries. Explicit
 `"treesitter"` discovery may return pipe-table nodes, but missing, incompatible,
 or unhelpful parsers fall back to Lua. Both paths feed the same parser and model.
 
@@ -269,8 +270,9 @@ There are several intentionally separate state layers:
 - `M.state`: high-level Float ownership and its originating-view snapshot plus
   per-Source mode, auto-preview, pause, viewport, refresh token, signature, and
   mapping overrides.
-- `reader.lua`: Reader-buffer states and shared Source ownership. One Source may
-  have multiple width-specific Reader windows; each state records the Source
+- `reader.lua`: Reader-buffer states, shared Source ownership, and temporary
+  per-Source/per-window viewport snapshots. One Source may have multiple
+  width-specific Reader windows; each state records the Source
   changedtick used to build its projection so cell actions can reject stale
   metadata safely. Logical cell segments and header lines are indexed during
   build, so cell actions and optional sticky-header updates do not scan the
@@ -279,7 +281,7 @@ There are several intentionally separate state layers:
   mappings, or one rendered table; the complete-state snapshot remains a
   diagnostic boundary rather than a cursor-local hot path.
 - `inline.lua`: active Source buffers/tables/configs, per-window saved wrap
-  options, and viewport offsets.
+  options and temporary window views, and viewport offsets.
 - `cache.lua` / `discovery.lua`: derived data and diagnostics keyed by Source.
 
 `paused` represents persistent user intent, not visibility:
@@ -296,7 +298,12 @@ Source paused ──explicit preview/enable──► rendered view, pause cleare
 
 Native Reader `BufHidden` cleanup calls `reader.abandon()` and deletes only the
 disposable view. It must not set the Source pause flag. When the Source next
-enters a window, the normal debounced auto-preview policy runs again.
+enters the same window, its changedtick-guarded Source/Reader viewport mapping
+is restored before the normal debounced auto-preview policy runs again. Any
+Source cursor, horizontal, vertical-scroll, or text change invalidates that
+snapshot. Buffer-navigation actions use the same temporary-leave contract;
+explicit close/edit still clears the snapshot and pauses Source. Inline saves
+and restores its native window view around detach/attach and option changes.
 
 ## Lifecycle And Scheduling
 
@@ -321,7 +328,10 @@ Readers or recompute Inline. Resize events fan out to every affected visible
 Reader and schedule each distinct visible Source/Inline buffer once, instead of
 depending on whichever window happened to be current. Buffer wipe releases
 Reader/Inline state, caches, discovery status, mappings, pause state, viewport
-state, and scheduled tokens. Window close restores Inline-owned options.
+state, and scheduled tokens. Window close restores Inline-owned options. Float
+ownership is cleared before closing/deleting its disposable window and buffer,
+so external window closes and Source/Float wipeout cannot leave stale buffer
+identities behind.
 
 Reader open snapshots Source cursor/window options, builds the complete derived
 document, prepares a scratch buffer, and sets Source `bufhidden` to `hide` while

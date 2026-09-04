@@ -53,8 +53,8 @@ renderer is disabled.
 - Top-level and blockquote-contained GFM-style pipe tables, with or without
   outer pipes. Nested quote depth and each cell's physical Source span are
   preserved.
-- Alignment rows, missing cells, escaped pipes, and pipes inside matching
-  backtick code spans.
+- GFM alignment rows, including compact single-hyphen delimiters, plus missing
+  cells, escaped pipes, and pipes inside matching backtick code spans.
 - Mixed CJK/Latin display widths and a documented inline-Markdown display
   subset for table cells.
 
@@ -104,6 +104,19 @@ In Reader:
   written as a document.
 - Native `v`, `V`, and `<C-v>` select real rendered text. Follow with `y` to
   copy the visible Unicode table.
+
+Reader is unlisted, so Bufferline/LazyVim `H` and `L` mappings need explicit
+passthrough. These actions are temporary navigation: returning to the Source
+restores Reader at the saved cursor and scroll position. A Source that was
+explicitly closed or paused stays in Source.
+
+```lua
+opts = {
+  mappings = {
+    reader = { passthrough = { H = "previous_buffer", L = "next_buffer" } },
+  },
+}
+```
 
 Float is temporary: `q`, `<Esc>`, `:MarkdownTableClosePreview`, or the preview
 toggle restores the view that opened it. Source returns to Source, Reader is
