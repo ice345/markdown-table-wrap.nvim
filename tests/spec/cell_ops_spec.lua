@@ -94,6 +94,31 @@ h.test("yic copies the original Markdown source of a wrapped cell", function()
   close_and_delete(plugin, source_bufnr)
 end)
 
+h.test("typed Reader cell operations use exact blockquote Source spans", function()
+  local quoted = {
+    "> | A | B |",
+    "  > | --- | --- |",
+    " > | one | [site](https://example.com) |",
+  }
+  local plugin, source_bufnr, reader_bufnr = open_reader(52, quoted)
+  h.assert_true("quoted Reader cell is found", position_on_cell(reader_bufnr, 3, 2) ~= nil)
+  vim.fn.feedkeys("yic", "xt")
+  vim.wait(80)
+  h.assert_eq("quoted yic excludes quote and neighboring cells", vim.fn.getreg('"'), "[site](https://example.com)")
+  h.assert_eq("quoted yic remains in Reader", vim.api.nvim_get_current_buf(), reader_bufnr)
+
+  h.assert_true("quoted Reader cell is found for delete", position_on_cell(reader_bufnr, 3, 2) ~= nil)
+  vim.fn.feedkeys("dic", "xt")
+  vim.wait(80)
+  h.assert_eq(
+    "quoted dic clears only the Source cell",
+    vim.api.nvim_buf_get_lines(source_bufnr, 2, 3, false)[1],
+    " > | one |  |"
+  )
+  h.assert_eq("quoted dic remains in Reader", vim.api.nvim_get_current_buf(), reader_bufnr)
+  close_and_delete(plugin, source_bufnr)
+end)
+
 h.test("typed yic and vic handle CJK/link cells without border leakage", function()
   local plugin, source_bufnr, reader_bufnr = open_reader(48, comparison_lines())
   local link_cell = position_on_cell(reader_bufnr, 5, 2)

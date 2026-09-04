@@ -35,7 +35,7 @@ h.test("format rewrites one table canonically in one Source change", function()
   local before = vim.api.nvim_buf_get_changedtick(buf)
   h.assert_true("format succeeds", editor.format({ silent = true }))
   local after = lines(buf)
-  h.assert_eq("formatted header keeps table columns", after[1], "| A   | Longer value |")
+  h.assert_eq("formatted header keeps table columns", after[1], "| A    | Longer value |")
   h.assert_eq("formatted delimiter keeps right alignment", after[2], "| :--- | -----------: |")
   h.assert_eq("format is one changedtick step", after and vim.api.nvim_buf_get_changedtick(buf), before + 1)
   vim.cmd("undo")
@@ -44,6 +44,70 @@ h.test("format rewrites one table canonically in one Source change", function()
     "| --- | ---: |",
     "| x | two |",
   })
+  cleanup(buf)
+end)
+
+h.test("format preserves blockquote containment and aligns physical Source pipes", function()
+  local editor = require("markdown-table-wrap.table_edit")
+  local _, buf = setup_source({
+    "> | A | Longer |",
+    ">| --- | ---: |",
+    "  > | x | two |",
+  })
+  h.assert_true("quoted format succeeds", editor.format({ silent = true }))
+  local formatted = lines(buf)
+  for _, line in ipairs(formatted) do
+    h.assert_true("formatted row remains quoted", vim.startswith(line, "> |"))
+  end
+  local function pipe_columns(line)
+    local result = {}
+    for index = 1, #line do
+      if line:sub(index, index) == "|" then
+        table.insert(result, index)
+      end
+    end
+    return result
+  end
+  h.assert_deep_eq("quoted Source rows align", pipe_columns(formatted[1]), pipe_columns(formatted[3]))
+  h.assert_deep_eq("quoted delimiter aligns", pipe_columns(formatted[1]), pipe_columns(formatted[2]))
+  cleanup(buf)
+end)
+
+h.test("format aligns raw Markdown source instead of concealed display text", function()
+  local editor = require("markdown-table-wrap.table_edit")
+  local _, buf = setup_source({
+    "| **A** | B |",
+    "| --- | --- |",
+    "| x | [link](url) |",
+  })
+  h.assert_true("format with markup succeeds", editor.format({ silent = true }))
+  local formatted = lines(buf)
+  local function pipes(line)
+    local result = {}
+    for index = 1, #line do
+      if line:sub(index, index) == "|" then
+        table.insert(result, index)
+      end
+    end
+    return result
+  end
+  h.assert_deep_eq("header and body Source pipes align", pipes(formatted[1]), pipes(formatted[3]))
+  h.assert_deep_eq("delimiter Source pipes align", pipes(formatted[1]), pipes(formatted[2]))
+  cleanup(buf)
+end)
+
+h.test("row deletion refuses a header cursor without changing Source", function()
+  local editor = require("markdown-table-wrap.table_edit")
+  local original = {
+    "| A | B |",
+    "| --- | --- |",
+    "| one | 1 |",
+    "| two | 2 |",
+  }
+  local _, buf = setup_source(original)
+  vim.api.nvim_win_set_cursor(0, { 1, 2 })
+  h.assert_false("header row deletion is refused", editor.delete_row({ silent = true }))
+  h.assert_deep_eq("header row refusal preserves Source", lines(buf), original)
   cleanup(buf)
 end)
 
@@ -111,6 +175,8 @@ h.test("long-cell popup writes exact Source range and supports cancel", function
   vim.api.nvim_win_set_cursor(0, { 3, 11 })
   local popup_buf, popup_win = editor.open_cell_popup({ silent = true })
   h.assert_true("cell popup opens", popup_buf ~= false and vim.api.nvim_win_is_valid(popup_win))
+  h.assert_eq("cell popup uses an isolated filetype", vim.bo[popup_buf].filetype, "markdown-table-wrap-cell")
+  h.assert_true("cell popup is marked auxiliary", vim.b[popup_buf].markdown_table_wrap_auxiliary == true)
   vim.api.nvim_buf_set_lines(popup_buf, 0, -1, false, { "edited value" })
   h.assert_true("cell popup commit succeeds", editor.commit_cell_popup({ silent = true }))
   h.assert_true("popup closes after commit", not vim.api.nvim_win_is_valid(popup_win))
@@ -132,6 +198,28 @@ h.test("long-cell popup writes exact Source range and supports cancel", function
   h.assert_false("stale popup commit is rejected", editor.commit_cell_popup({ silent = true }))
   editor.close_cell_popup()
   h.assert_true("stale Source edit remains authoritative", lines(buf)[3]:find("changed elsewhere", 1, true) ~= nil)
+  cleanup(buf)
+end)
+
+h.test("long-cell popup grows vertically and soft-wraps its editable Source", function()
+  local editor = require("markdown-table-wrap.table_edit")
+  local value = string.rep("long editable value ", 20)
+  local _, buf = setup_source({
+    "| A | B |",
+    "| --- | --- |",
+    "| one | " .. value .. " |",
+  })
+  vim.api.nvim_win_set_cursor(0, { 3, 12 })
+  local popup_buf, popup_win = editor.open_cell_popup({ silent = true })
+  h.assert_true("long cell popup opens", popup_buf ~= false)
+  local initial_height = vim.api.nvim_win_get_height(popup_win)
+  h.assert_true("long cell popup is taller than the minimum", initial_height > 3)
+  h.assert_true("long cell popup uses soft wrapping", vim.wo[popup_win].wrap)
+  h.assert_true("long cell popup uses linebreak", vim.wo[popup_win].linebreak)
+  vim.api.nvim_buf_set_lines(popup_buf, 0, -1, false, { string.rep("more text ", 80) })
+  vim.api.nvim_exec_autocmds("TextChanged", { buffer = popup_buf, modeline = false })
+  h.assert_true("popup grows as edited text grows", vim.api.nvim_win_get_height(popup_win) > initial_height)
+  editor.close_cell_popup()
   cleanup(buf)
 end)
 

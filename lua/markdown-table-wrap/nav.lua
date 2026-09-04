@@ -1,128 +1,10 @@
 local M = {}
-
-local function iter_chars_with_pos(text)
-  local index = 1
-  return function()
-    if index > #text then
-      return nil
-    end
-
-    local start_col, end_col, ch = text:find("([%z\1-\127\194-\244][\128-\191]*)", index)
-    if not start_col then
-      return nil
-    end
-
-    index = end_col + 1
-    return ch, start_col, end_col
-  end
-end
-
-local function next_char_at(text, index)
-  local start_col, end_col, ch = text:find("([%z\1-\127\194-\244][\128-\191]*)", index)
-  if not start_col then
-    return nil
-  end
-  return ch, start_col, end_col
-end
-
-local function backtick_run_at(text, index)
-  local count = 0
-  local cursor = index
-
-  while cursor <= #text do
-    local ch, _, end_col = next_char_at(text, cursor)
-    if ch ~= "`" then
-      break
-    end
-    count = count + 1
-    cursor = end_col + 1
-  end
-
-  return count, cursor - 1
-end
-
-local function pipe_positions(line)
-  local positions = {}
-  local code_ticks = nil
-  local escaped = false
-
-  local index = 1
-  while index <= #line do
-    local ch, start_col, end_col = next_char_at(line, index)
-    if not ch then
-      break
-    end
-
-    if escaped then
-      escaped = false
-    elseif ch == "\\" then
-      escaped = true
-    elseif ch == "`" then
-      local count, run_end = backtick_run_at(line, index)
-      if not code_ticks then
-        code_ticks = count
-      elseif count == code_ticks then
-        code_ticks = nil
-      end
-      index = run_end + 1
-      goto continue
-    elseif ch == "|" and not code_ticks then
-      table.insert(positions, start_col)
-    end
-
-    index = end_col + 1
-    ::continue::
-  end
-
-  return positions
-end
-
-local function trim_span(line, left, right)
-  while left <= right and line:sub(left, left):match("%s") do
-    left = left + 1
-  end
-
-  while right >= left and line:sub(right, right):match("%s") do
-    right = right - 1
-  end
-
-  return left, right
-end
+local container = require("markdown-table-wrap.container")
+local pipes = require("markdown-table-wrap.pipes")
 
 local function cell_spans(line)
-  local pipes = pipe_positions(line)
-  if #pipes == 0 then
-    return {}
-  end
-
-  local bounds = { 0 }
-  for _, position in ipairs(pipes) do
-    table.insert(bounds, position)
-  end
-  table.insert(bounds, #line + 1)
-
-  local spans = {}
-  for index = 1, #bounds - 1 do
-    local left = bounds[index] + 1
-    local right = bounds[index + 1] - 1
-    local is_outer_left = index == 1 and vim.startswith(line, "|")
-    local is_outer_right = index == #bounds - 1 and vim.endswith(line, "|")
-
-    if not is_outer_left and not is_outer_right then
-      local text_left, text_right = trim_span(line, left, right)
-      if text_left > text_right then
-        text_left = left
-        text_right = right
-      end
-
-      table.insert(spans, {
-        start_col = math.max(text_left - 1, 0),
-        end_col = math.max(text_right, 0),
-      })
-    end
-  end
-
-  return spans
+  local parsed = container.line(line)
+  return pipes.cell_spans(parsed.content, parsed.content_start_col)
 end
 
 local function current_cell_index(spans, col)
@@ -157,7 +39,7 @@ local function move_to_cell(row, cell_index)
   return true
 end
 
-function M.move_horizontal(direction)
+local function move_source_horizontal(direction)
   local cursor = vim.api.nvim_win_get_cursor(0)
   local row = cursor[1] - 1
   local col = cursor[2]
@@ -173,7 +55,7 @@ function M.move_horizontal(direction)
   return move_to_cell(row, target)
 end
 
-function M.move_vertical(direction)
+local function move_source_vertical(direction)
   local parser = require("markdown-table-wrap.parser")
   local cursor = vim.api.nvim_win_get_cursor(0)
   local bufnr = vim.api.nvim_get_current_buf()
@@ -197,6 +79,102 @@ function M.move_vertical(direction)
   end
 
   return move_to_cell(target_row, current)
+end
+
+local function logical_table(context)
+  if not context or not context.table or not context.cell or context.cell.row_index == nil then
+    return nil
+  end
+  return require("markdown-table-wrap.parser").parse_at_cursor(context.source_bufnr, context.cursor.source_lnum)
+end
+
+local function source_lnum_for(table_info, row_index)
+  if row_index == 0 then
+    return table_info.start_lnum
+  end
+  local row = table_info.rows[row_index]
+  return row and row.source_lnum or nil
+end
+
+local function focus_float_cell(context, table_id, row_index, column_index)
+  local rendered = require("markdown-table-wrap").state.float_rendered
+  local winid = context.winid
+  if not rendered or not winid or not vim.api.nvim_win_is_valid(winid) then
+    return false
+  end
+  for row, object in ipairs(rendered.line_objects or {}) do
+    for _, cell in ipairs(type(object) == "table" and object.cells or {}) do
+      if cell.table_id == table_id and cell.row_index == row_index and cell.column_index == column_index then
+        vim.api.nvim_win_set_cursor(winid, { row, cell.start_col })
+        return true
+      end
+    end
+  end
+  return false
+end
+
+local function focus_logical_cell(context, table_info, row_index, column_index)
+  local source_lnum = source_lnum_for(table_info, row_index)
+  if not source_lnum then
+    return false
+  end
+  if context.mode == "reader" then
+    local wide = context.config.wide_table or {}
+    if wide.mode == "viewport" then
+      local adjusted =
+        require("markdown-table-wrap.render").ensure_viewport(context.config, #table_info.header, column_index)
+      local current = (wide.viewport or {}).start_column or 1
+      local target = (((adjusted or {}).wide_table or {}).viewport or {}).start_column or current
+      if target ~= current then
+        require("markdown-table-wrap").set_wide_table_viewport(target, context.source_bufnr)
+      end
+    end
+    return require("markdown-table-wrap.reader").focus_source_cell(
+      context.view_bufnr,
+      source_lnum,
+      column_index,
+      context.cell.table_id,
+      row_index
+    )
+  end
+  local wide = context.config.wide_table or {}
+  if wide.mode == "viewport" then
+    local adjusted =
+      require("markdown-table-wrap.render").ensure_viewport(context.config, #table_info.header, column_index)
+    local current = (wide.viewport or {}).start_column or 1
+    local target = (((adjusted or {}).wide_table or {}).viewport or {}).start_column or current
+    if target ~= current then
+      require("markdown-table-wrap").set_wide_table_viewport(target, context.source_bufnr)
+    end
+  end
+  return focus_float_cell(context, context.cell.table_id, row_index, column_index)
+end
+
+function M.move_horizontal(direction)
+  local context = require("markdown-table-wrap.context").resolve()
+  if not context or (context.mode ~= "reader" and context.mode ~= "float") then
+    return move_source_horizontal(direction)
+  end
+  local table_info = logical_table(context)
+  if not table_info then
+    return false
+  end
+  local current = context.cell.index
+  local target = math.max(1, math.min(#table_info.header, current + direction))
+  return focus_logical_cell(context, table_info, context.cell.row_index, target)
+end
+
+function M.move_vertical(direction)
+  local context = require("markdown-table-wrap.context").resolve()
+  if not context or (context.mode ~= "reader" and context.mode ~= "float") then
+    return move_source_vertical(direction)
+  end
+  local table_info = logical_table(context)
+  if not table_info then
+    return false
+  end
+  local target = math.max(0, math.min(#table_info.rows, context.cell.row_index + direction))
+  return focus_logical_cell(context, table_info, target, context.cell.index)
 end
 
 function M.spans(line)

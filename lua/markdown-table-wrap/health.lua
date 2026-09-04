@@ -43,20 +43,30 @@ function M.collect()
     "markdown-table-wrap",
     "markdown-table-wrap.actions",
     "markdown-table-wrap.cache",
+    "markdown-table-wrap.cell_ops",
     "markdown-table-wrap.commands",
     "markdown-table-wrap.config",
+    "markdown-table-wrap.container",
     "markdown-table-wrap.context",
     "markdown-table-wrap.discovery",
     "markdown-table-wrap.events",
+    "markdown-table-wrap.export",
+    "markdown-table-wrap.fence",
     "markdown-table-wrap.inline",
     "markdown-table-wrap.inspect",
     "markdown-table-wrap.links",
     "markdown-table-wrap.mappings",
     "markdown-table-wrap.markdown",
+    "markdown-table-wrap.nav",
     "markdown-table-wrap.parser",
+    "markdown-table-wrap.pipes",
     "markdown-table-wrap.reader",
     "markdown-table-wrap.render",
+    "markdown-table-wrap.table_edit",
     "markdown-table-wrap.theme",
+    "markdown-table-wrap.types",
+    "markdown-table-wrap.utf8",
+    "markdown-table-wrap.width",
     "markdown-table-wrap.wrap",
   }
   for _, module in ipairs(modules) do
@@ -75,6 +85,9 @@ function M.collect()
   else
     add("warn", "Highlight preset is unresolved: " .. tostring(preset))
   end
+  if plugin.config.theme_dir then
+    add("ok", "theme_dir loads trusted Lua files with dofile: " .. tostring(plugin.config.theme_dir))
+  end
 
   local context, context_err = require("markdown-table-wrap.context").resolve({})
   if context then
@@ -88,6 +101,9 @@ function M.collect()
         context.source_path or "[No Name]"
       )
     )
+    if context.table and (context.table.excess_cells or 0) > 0 then
+      add("warn", string.format("Active table contains %d excess Source cell(s)", context.table.excess_cells))
+    end
   else
     add("ok", "No active MarkdownTableWrap context: " .. tostring(context_err))
   end

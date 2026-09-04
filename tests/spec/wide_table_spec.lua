@@ -83,9 +83,9 @@ h.test("viewport helper keeps the active column visible", function()
       viewport = { start_column = 2, column_count = 2, marker = "…" },
     },
   }
-  render.ensure_viewport(config, 6, 1)
+  config = render.ensure_viewport(config, 6, 1)
   h.assert_eq("active column shifts viewport left", config.wide_table.viewport.start_column, 1)
-  render.ensure_viewport(config, 6, 5)
+  config = render.ensure_viewport(config, 6, 5)
   h.assert_eq("active column shifts viewport right", config.wide_table.viewport.start_column, 4)
 end)
 
@@ -110,4 +110,38 @@ h.test("impossible fixed constraints are deterministic and inspectable", functio
   h.assert_true("overflow is reported", first.layout.overflow)
   h.assert_deep_eq("overflow layout is deterministic", first.column_widths, second.column_widths)
   vim.api.nvim_buf_delete(buf, { force = true })
+end)
+
+h.test("viewport movement reports wrap mode instead of silently doing nothing", function()
+  local plugin = require("markdown-table-wrap")
+  plugin.setup({ auto_preview = false, wide_table = { mode = "wrap" } })
+  local original_notify = vim.notify
+  local message
+  vim.notify = function(value)
+    message = value
+  end
+  h.assert_false("wrap mode refuses viewport movement", plugin.shift_wide_table_viewport(1))
+  vim.notify = original_notify
+  h.assert_true("wrap-mode refusal explains viewport mode", message:find("wide_table.mode", 1, true) ~= nil)
+end)
+
+h.test("viewport commands refresh an open Float against its Source state", function()
+  local plugin = require("markdown-table-wrap")
+  plugin.setup({
+    auto_preview = false,
+    wide_table = { mode = "viewport", viewport = { start_column = 1, column_count = 1 } },
+  })
+  h.with_buffer({
+    "| A | B | C |",
+    "| --- | --- | --- |",
+    "| one | two | three |",
+  }, function(source_bufnr)
+    vim.bo[source_bufnr].filetype = "markdown"
+    vim.api.nvim_win_set_cursor(0, { 3, 2 })
+    plugin.float_preview()
+    h.assert_true("Float viewport advances", plugin.shift_wide_table_viewport(1))
+    h.assert_eq("Float keeps its Source identity", plugin.state.float_source_bufnr, source_bufnr)
+    h.assert_deep_eq("Float rerenders the requested slice", plugin.state.float_rendered.visible_columns, { 2 })
+    plugin.close_preview()
+  end)
 end)

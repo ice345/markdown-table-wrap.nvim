@@ -234,6 +234,46 @@ h.test("v0.4 parse and layout caches invalidate by changedtick and window signat
   end)
 end)
 
+h.test("public cache results stay isolated while internal views reuse read-only models", function()
+  local parser = require("markdown-table-wrap.parser")
+  local render = require("markdown-table-wrap.render")
+  local cache = require("markdown-table-wrap.cache")
+
+  h.with_buffer({ "| A | B |", "| --- | --- |", "| one | two |" }, function(buf)
+    vim.bo[buf].filetype = "markdown"
+    cache.clear_buffer(buf)
+    local public_first = parser.parse_all(buf)
+    public_first[1].header[1].text = "mutated"
+    local public_second = parser.parse_all(buf)
+    h.assert_eq("public parse cache returns an isolated model", public_second[1].header[1].text, "A")
+
+    local parse_ref = parser.parse_all_ref(buf)
+    h.assert_true("internal parse cache reuses one model", parse_ref == parser.parse_all_ref(buf))
+    local config = {
+      max_width_ratio = 1,
+      min_col_width = 4,
+      max_col_width = 20,
+      fit_to_window = true,
+      use_unicode_border = true,
+      table_border = "rounded",
+      row_separator = false,
+      wide_table = {},
+      link = {},
+    }
+    local public_render = render.render_table(parse_ref[1], config)
+    local original_top = public_render.lines[1]
+    public_render.lines[1] = "mutated"
+    h.assert_eq(
+      "public layout cache returns an isolated model",
+      render.render_table(parse_ref[1], config).lines[1],
+      original_top
+    )
+
+    local render_ref = render.render_table_ref(parse_ref[1], config)
+    h.assert_true("internal layout cache reuses one model", render_ref == render.render_table_ref(parse_ref[1], config))
+  end)
+end)
+
 h.test("v0.4 buffer wipe releases parser layout and discovery state", function()
   local plugin = require("markdown-table-wrap")
   local cache = require("markdown-table-wrap.cache")

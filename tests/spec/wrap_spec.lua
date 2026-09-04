@@ -64,6 +64,28 @@ h.test("wrap handles wide characters and hard breaks", function()
   end
 end)
 
+h.test("wrap prefers common Chinese sentence punctuation", function()
+  local markdown = require("markdown-table-wrap.markdown")
+  local wrap = require("markdown-table-wrap.wrap")
+  local value = "第一段。第二段！第三段？第四段：第五段"
+  local lines = wrap.wrap_cell(markdown.parse_inline(value), 10)
+  local joined = {}
+  local punctuation_breaks = 0
+
+  for index, line in ipairs(lines) do
+    h.assert_true("Chinese punctuation line fits " .. index, vim.api.nvim_strwidth(line.text) <= 10)
+    table.insert(joined, line.text)
+    for _, punctuation in ipairs({ "。", "！", "？", "：" }) do
+      if vim.endswith(line.text, punctuation) then
+        punctuation_breaks = punctuation_breaks + 1
+        break
+      end
+    end
+  end
+  h.assert_eq("Chinese punctuation wrapping preserves text", table.concat(joined), value)
+  h.assert_true("Chinese punctuation is used as a preferred boundary", punctuation_breaks >= 3)
+end)
+
 h.test("wrap prefers punctuation boundaries and preserves link metadata", function()
   local markdown = require("markdown-table-wrap.markdown")
   local wrap = require("markdown-table-wrap.wrap")

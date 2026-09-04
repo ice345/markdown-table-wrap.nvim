@@ -1,6 +1,6 @@
 local M = {}
 
-M.version = "0.6.0"
+M.version = "0.7.0"
 
 local config_module = require("markdown-table-wrap.config")
 M.config = config_module.defaults()
@@ -16,6 +16,7 @@ M.state = {
   buffer_modes = {},
   inline_viewports = {},
   wide_viewports = {},
+  buffer_configs = {},
   gx_fallbacks = {},
   gx_installed = {},
   gx_callbacks = {},
@@ -26,12 +27,11 @@ M.state = {
   float_source_winid = nil,
   float_source_alt_bufnr = nil,
   float_rendered = nil,
+  float_origin = nil,
 }
 
 local function configured_filetypes()
-  local filetypes = { "markdown", "md", "quarto", "rmd", "rmarkdown" }
-  vim.list_extend(filetypes, M.config.extra_filetypes or {})
-  return filetypes
+  return config_module.filetypes(M.config.extra_filetypes)
 end
 
 local function is_supported_filetype(filetype)
@@ -45,6 +45,12 @@ local function normalize_bufnr(bufnr)
   return bufnr
 end
 
+local function invalidate_scheduled_refresh(bufnr)
+  if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+    M.state.refresh_tokens[bufnr] = (M.state.refresh_tokens[bufnr] or 0) + 1
+  end
+end
+
 local function is_markdown_buffer(bufnr)
   bufnr = normalize_bufnr(bufnr)
   if not vim.api.nvim_buf_is_valid(bufnr) then
@@ -56,6 +62,11 @@ local function is_markdown_buffer(bufnr)
   end
 
   return is_supported_filetype(vim.bo[bufnr].filetype)
+end
+
+local function is_auto_preview_buffer(bufnr)
+  bufnr = normalize_bufnr(bufnr)
+  return is_markdown_buffer(bufnr) and vim.b[bufnr].markdown_table_wrap_auxiliary ~= true
 end
 
 local function preview_mode_for(bufnr)
@@ -79,20 +90,42 @@ local function inline_viewport_for(bufnr)
 end
 
 local function config_for_buffer(bufnr)
-  local config = vim.deepcopy(M.config)
-  config.preview_mode = preview_mode_for(bufnr)
-  config.auto_preview = auto_preview_for(bufnr)
-  config.inline_viewport_scrolling = inline_viewport_for(bufnr)
+  local preview_mode = preview_mode_for(bufnr)
+  local auto_preview = auto_preview_for(bufnr)
+  local inline_viewport_scrolling = inline_viewport_for(bufnr)
   local viewport = M.state.wide_viewports[bufnr]
+  local viewport_start = viewport and viewport.start_column or nil
+  local cached = M.state.buffer_configs[bufnr]
+  if
+    cached
+    and cached.preview_mode == preview_mode
+    and cached.auto_preview == auto_preview
+    and cached.inline_viewport_scrolling == inline_viewport_scrolling
+    and cached.viewport_start == viewport_start
+  then
+    return cached.config
+  end
+
+  local config = vim.deepcopy(M.config)
+  config.preview_mode = preview_mode
+  config.auto_preview = auto_preview
+  config.inline_viewport_scrolling = inline_viewport_scrolling
   if viewport and type(config.wide_table) == "table" and type(config.wide_table.viewport) == "table" then
     config.wide_table.viewport.start_column = viewport.start_column or config.wide_table.viewport.start_column
   end
+  M.state.buffer_configs[bufnr] = {
+    preview_mode = preview_mode,
+    auto_preview = auto_preview,
+    inline_viewport_scrolling = inline_viewport_scrolling,
+    viewport_start = viewport_start,
+    config = config,
+  }
   return config
 end
 
 function M.get_buffer_config(bufnr)
   bufnr = normalize_bufnr(bufnr)
-  return config_for_buffer(bufnr)
+  return vim.deepcopy(config_for_buffer(bufnr))
 end
 
 function M.get_preview_mode(bufnr)
@@ -159,7 +192,8 @@ function M.statusline(bufnr)
   if not context.table then
     return "MTW " .. mode
   end
-  local table_row = context.cursor.source_lnum - context.table.start_lnum + 1
+  local table_row = context.cell and context.cell.row_index ~= nil and context.cell.row_index + 1
+    or context.cursor.source_lnum - context.table.start_lnum + 1
   local cell = context.cell and context.cell.index or 0
   return string.format("MTW %s T%d:C%d", mode, math.max(1, table_row), cell)
 end
@@ -229,6 +263,7 @@ end
 local function close_existing()
   local source_bufnr = M.state.float_source_bufnr
   local source_winid = M.state.float_source_winid
+  local origin = M.state.float_origin
   local had_float = source_bufnr ~= nil
   if M.state.win and vim.api.nvim_win_is_valid(M.state.win) then
     vim.api.nvim_win_close(M.state.win, true)
@@ -244,6 +279,7 @@ local function close_existing()
   M.state.float_source_winid = nil
   M.state.float_source_alt_bufnr = nil
   M.state.float_rendered = nil
+  M.state.float_origin = nil
   if had_float and source_bufnr and vim.api.nvim_buf_is_valid(source_bufnr) then
     require("markdown-table-wrap.events").emit("MarkdownTableWrapViewChanged", {
       mode = "source",
@@ -252,6 +288,7 @@ local function close_existing()
       winid = source_winid,
     })
   end
+  return source_bufnr, source_winid, origin
 end
 
 local function table_signature(bufnr, table_info, config)
@@ -272,7 +309,7 @@ local function table_signature(bufnr, table_info, config)
     tostring(config.inline_disable_wrap),
     tostring(config.inline_wrap_scope),
     tostring(config.inline_viewport_scrolling),
-    vim.inspect(config.wide_table or {}),
+    config_module.wide_table_signature(config.wide_table),
     table.concat(lines, "\n"),
   }, "\31")
 end
@@ -294,7 +331,7 @@ local function all_tables_signature(bufnr, tables, config)
     tostring(config.inline_wrap_scope),
     tostring(config.overlay_fill),
     tostring(config.inline_viewport_scrolling),
-    vim.inspect(config.wide_table or {}),
+    config_module.wide_table_signature(config.wide_table),
   }
 
   for _, table_info in ipairs(tables) do
@@ -305,10 +342,29 @@ local function all_tables_signature(bufnr, tables, config)
   return table.concat(parts, "\31")
 end
 
-function M.close_preview()
+local restore_float_origin
+
+function M.close_preview(opts)
+  opts = opts or {}
   if require("markdown-table-wrap.reader").is_reader(0) then
     M.close_reader()
-    return
+    return true
+  end
+
+  if M.state.float_source_bufnr then
+    local source_bufnr, source_winid, origin = close_existing()
+    if opts.restore_origin ~= false and origin and restore_float_origin(source_bufnr, source_winid, origin) then
+      return true
+    end
+    if source_winid and vim.api.nvim_win_is_valid(source_winid) then
+      vim.api.nvim_set_current_win(source_winid)
+    elseif source_bufnr and vim.api.nvim_buf_is_valid(source_bufnr) then
+      vim.api.nvim_win_set_buf(0, source_bufnr)
+    end
+    if source_bufnr and opts.pause ~= false then
+      M.pause_buffer(source_bufnr)
+    end
+    return source_bufnr ~= nil
   end
 
   close_existing()
@@ -318,6 +374,7 @@ function M.close_preview()
     M.state.inline_buf = nil
   end
   M.state.paused_buffers[bufnr] = true
+  return true
 end
 
 local function table_under_cursor(opts)
@@ -348,10 +405,90 @@ local function table_under_cursor(opts)
   return bufnr, table_info
 end
 
+local function prepare_preview_source()
+  local current = vim.api.nvim_get_current_buf()
+  local reader = require("markdown-table-wrap.reader")
+  local is_reader = reader.is_reader(current)
+  local is_float = M.state.buf == current and M.state.float_source_bufnr ~= nil
+  local context = select(1, require("markdown-table-wrap.context").resolve({ bufnr = current }))
+  if not is_reader and not is_float then
+    return context, true
+  end
+  if not context then
+    return nil, false
+  end
+
+  local source_bufnr = context.source_bufnr
+  if is_reader then
+    if not reader.close(current) then
+      return nil, false
+    end
+  else
+    local source_winid = context.float and context.float.source_winid or M.state.float_source_winid
+    close_existing()
+    if source_winid and vim.api.nvim_win_is_valid(source_winid) then
+      vim.api.nvim_set_current_win(source_winid)
+    elseif vim.api.nvim_buf_is_valid(source_bufnr) then
+      vim.api.nvim_win_set_buf(0, source_bufnr)
+    end
+  end
+
+  if vim.api.nvim_get_current_buf() ~= source_bufnr then
+    return nil, false
+  end
+  local lnum = math.max(1, math.min(context.cursor.source_lnum, vim.api.nvim_buf_line_count(source_bufnr)))
+  local line = vim.api.nvim_buf_get_lines(source_bufnr, lnum - 1, lnum, false)[1] or ""
+  vim.api.nvim_win_set_cursor(0, { lnum, math.max(0, math.min(context.cursor.source_col, #line)) })
+  return context, true
+end
+
+local function focus_float_origin(rendered, winid, context)
+  local cell = context and context.cell or nil
+  if not cell or not cell.table_id or cell.row_index == nil or not winid or not vim.api.nvim_win_is_valid(winid) then
+    return
+  end
+  for row, object in ipairs(rendered.line_objects or {}) do
+    for _, rendered_cell in ipairs(type(object) == "table" and object.cells or {}) do
+      if
+        rendered_cell.table_id == cell.table_id
+        and rendered_cell.row_index == cell.row_index
+        and rendered_cell.column_index == cell.index
+      then
+        vim.api.nvim_win_set_cursor(winid, { row, rendered_cell.start_col })
+        return
+      end
+    end
+  end
+end
+
+local function float_origin_from_context(context)
+  if not context or not context.source_bufnr then
+    return nil
+  end
+  return {
+    mode = context.mode,
+    source_bufnr = context.source_bufnr,
+    paused = M.state.paused_buffers[context.source_bufnr] == true,
+    cursor = {
+      source_lnum = context.cursor.source_lnum,
+      source_col = context.cursor.source_col,
+    },
+    cell = context.cell and {
+      table_id = context.cell.table_id,
+      row_index = context.cell.row_index,
+      index = context.cell.index,
+    } or nil,
+  }
+end
+
 function M.inline_preview()
+  local _, prepared = prepare_preview_source()
+  if not prepared then
+    return false
+  end
   local bufnr, table_info = table_under_cursor()
   if not bufnr then
-    return
+    return false
   end
 
   close_existing()
@@ -364,6 +501,7 @@ function M.inline_preview()
     { mode = "inline", source_bufnr = bufnr, view_bufnr = bufnr, winid = vim.api.nvim_get_current_win() }
   require("markdown-table-wrap.events").emit("MarkdownTableWrapViewChanged", event_data)
   require("markdown-table-wrap.events").emit("MarkdownTableWrapRendered", event_data)
+  return true
 end
 
 function M.reader_preview(opts)
@@ -374,6 +512,12 @@ function M.reader_preview(opts)
   if reader.is_reader(bufnr) then
     return bufnr
   end
+
+  local _, prepared = prepare_preview_source()
+  if not prepared then
+    return nil
+  end
+  bufnr = vim.api.nvim_get_current_buf()
 
   if not is_markdown_buffer() then
     if not opts.silent then
@@ -392,6 +536,52 @@ function M.reader_preview(opts)
   M.state.last_signature[bufnr] = nil
   M.state.paused_buffers[bufnr] = nil
   return reader.open(bufnr, config_for_buffer(bufnr))
+end
+
+restore_float_origin = function(source_bufnr, source_winid, origin)
+  if not source_bufnr or not vim.api.nvim_buf_is_valid(source_bufnr) or origin.source_bufnr ~= source_bufnr then
+    return false
+  end
+
+  if source_winid and vim.api.nvim_win_is_valid(source_winid) then
+    vim.api.nvim_set_current_win(source_winid)
+  elseif vim.api.nvim_get_current_buf() ~= source_bufnr then
+    vim.api.nvim_win_set_buf(0, source_bufnr)
+  end
+  if vim.api.nvim_get_current_buf() ~= source_bufnr then
+    return false
+  end
+
+  local cursor = origin.cursor or {}
+  local lnum = math.max(1, math.min(cursor.source_lnum or 1, vim.api.nvim_buf_line_count(source_bufnr)))
+  local line = vim.api.nvim_buf_get_lines(source_bufnr, lnum - 1, lnum, false)[1] or ""
+  vim.api.nvim_win_set_cursor(0, { lnum, math.max(0, math.min(cursor.source_col or 0, #line)) })
+  invalidate_scheduled_refresh(source_bufnr)
+
+  if origin.mode == "reader" then
+    M.state.paused_buffers[source_bufnr] = nil
+    local reader_bufnr = M.reader_preview({ silent = true, auto = true })
+    if not reader_bufnr then
+      return false
+    end
+    local cell = origin.cell
+    if cell and cell.index and cell.row_index ~= nil then
+      require("markdown-table-wrap.reader").focus_source_cell(
+        reader_bufnr,
+        lnum,
+        cell.index,
+        cell.table_id,
+        cell.row_index
+      )
+    end
+  elseif origin.mode == "inline" and not require("markdown-table-wrap.inline").is_active(source_bufnr) then
+    if not M.inline_preview() then
+      return false
+    end
+  end
+
+  M.state.paused_buffers[source_bufnr] = origin.paused and true or nil
+  return true
 end
 
 function M.pause_buffer(bufnr)
@@ -430,10 +620,19 @@ function M.edit_source()
   return reader.edit(0, nil, true)
 end
 
-function M.float_preview()
+function M.float_preview(opts)
+  opts = opts or {}
+  local previous_origin = M.state.float_origin and vim.deepcopy(M.state.float_origin) or nil
+  local origin_context, prepared = prepare_preview_source()
+  if not prepared then
+    return false
+  end
+  local float_origin = opts.origin
+    or (origin_context and origin_context.mode == "float" and previous_origin)
+    or float_origin_from_context(origin_context)
   local bufnr, table_info = table_under_cursor()
   if not bufnr then
-    return
+    return false
   end
 
   close_existing()
@@ -450,13 +649,17 @@ function M.float_preview()
   M.state.float_source_winid = source_winid
   M.state.float_source_alt_bufnr = source_alt_bufnr > 0 and source_alt_bufnr or nil
   M.state.float_rendered = rendered
+  M.state.float_origin = float_origin
+  focus_float_origin(rendered, win, origin_context)
   local event_data = { mode = "float", source_bufnr = bufnr, view_bufnr = buf, winid = win }
   require("markdown-table-wrap.events").emit("MarkdownTableWrapViewChanged", event_data)
   require("markdown-table-wrap.events").emit("MarkdownTableWrapRendered", event_data)
+  return buf, win
 end
 
 function M.preview()
-  local mode = preview_mode_for(vim.api.nvim_get_current_buf())
+  local context = select(1, require("markdown-table-wrap.context").resolve())
+  local mode = preview_mode_for(context and context.source_bufnr or vim.api.nvim_get_current_buf())
   if mode == "float" then
     M.float_preview()
     return
@@ -477,6 +680,15 @@ function M.refresh_auto(opts)
   if not vim.api.nvim_buf_is_valid(bufnr) or vim.api.nvim_get_current_buf() ~= bufnr then
     return
   end
+
+  -- Reader -> Float briefly restores the Source window. That BufWinEnter can
+  -- leave an automatic Reader refresh queued for the same Source. An explicit
+  -- Float is authoritative while its window is alive; otherwise the delayed
+  -- callback immediately closes it and makes the keypress appear to do
+  -- nothing.
+  if M.state.float_source_bufnr == bufnr and M.state.win ~= nil and vim.api.nvim_win_is_valid(M.state.win) then
+    return
+  end
   local config = config_for_buffer(bufnr)
 
   if not config.auto_preview and not opts.force then
@@ -487,7 +699,7 @@ function M.refresh_auto(opts)
     return
   end
 
-  if not is_markdown_buffer(bufnr) then
+  if not is_markdown_buffer(bufnr) or (not opts.force and not is_auto_preview_buffer(bufnr)) then
     inline.clear(bufnr)
     return
   end
@@ -636,8 +848,7 @@ function M.toggle_preview()
   end
 
   if M.state.win and vim.api.nvim_win_is_valid(M.state.win) then
-    close_existing()
-    return
+    return M.close_preview()
   end
 
   local inline = require("markdown-table-wrap.inline")
@@ -664,6 +875,12 @@ function M.toggle_inline()
       return false
     end
     bufnr = source_bufnr
+  elseif M.state.buf == bufnr and M.state.float_source_bufnr then
+    local _, prepared = prepare_preview_source()
+    if not prepared then
+      return false
+    end
+    bufnr = vim.api.nvim_get_current_buf()
   end
 
   if not is_markdown_buffer() then
@@ -687,53 +904,83 @@ function M.toggle_inline()
 end
 
 function M.enable_auto_preview()
-  local bufnr = vim.api.nvim_get_current_buf()
-  M.state.paused_buffers[bufnr] = nil
-  M.state.auto_buffers[bufnr] = true
-  M.refresh_auto({ force = true })
+  local context = select(1, require("markdown-table-wrap.context").resolve())
+  if not context then
+    return false
+  end
+  local source_bufnr = context.source_bufnr
+  M.state.paused_buffers[source_bufnr] = nil
+  M.state.auto_buffers[source_bufnr] = true
+  invalidate_scheduled_refresh(source_bufnr)
+
+  if context.mode == "reader" then
+    return require("markdown-table-wrap.reader").refresh(context.view_bufnr)
+  elseif context.mode == "float" then
+    if M.state.float_origin then
+      M.state.float_origin.paused = false
+    end
+    return true
+  end
+  M.refresh_auto({ bufnr = source_bufnr, force = true })
+  return true
 end
 
 function M.disable_auto_preview()
-  if require("markdown-table-wrap.reader").is_reader(0) then
-    local source_bufnr = require("markdown-table-wrap.reader").source_bufnr(0)
-    if M.close_reader() and source_bufnr then
-      M.state.auto_buffers[source_bufnr] = false
-    end
-    return
+  local context = select(1, require("markdown-table-wrap.context").resolve())
+  if not context then
+    return false
   end
+  local source_bufnr = context.source_bufnr
+  M.state.paused_buffers[source_bufnr] = true
+  M.state.auto_buffers[source_bufnr] = false
+  invalidate_scheduled_refresh(source_bufnr)
 
-  local bufnr = vim.api.nvim_get_current_buf()
-  M.state.paused_buffers[bufnr] = true
-  M.state.auto_buffers[bufnr] = false
-  require("markdown-table-wrap.inline").clear(bufnr)
-  if M.state.inline_buf == bufnr then
+  if context.mode == "reader" then
+    require("markdown-table-wrap.reader").close(context.view_bufnr)
+  elseif context.mode == "float" then
+    M.close_preview({ restore_origin = false })
+  end
+  require("markdown-table-wrap.inline").clear(source_bufnr)
+  if M.state.inline_buf == source_bufnr then
     M.state.inline_buf = nil
   end
-  M.state.last_signature[bufnr] = nil
+  M.state.last_signature[source_bufnr] = nil
+  return true
 end
 
 function M.toggle_auto_preview()
-  local bufnr = vim.api.nvim_get_current_buf()
-  if auto_preview_for(bufnr) and not M.state.paused_buffers[bufnr] then
-    M.disable_auto_preview()
+  local context = select(1, require("markdown-table-wrap.context").resolve())
+  if not context then
+    return false
+  end
+  local source_bufnr = context.source_bufnr
+  if auto_preview_for(source_bufnr) and not M.state.paused_buffers[source_bufnr] then
+    return M.disable_auto_preview()
   else
-    M.enable_auto_preview()
+    return M.enable_auto_preview()
   end
 end
 
 function M.toggle_inline_viewport_scrolling()
-  local bufnr = vim.api.nvim_get_current_buf()
-  M.state.inline_viewports[bufnr] = not inline_viewport_for(bufnr)
-  require("markdown-table-wrap.inline").reset_view(bufnr)
-  M.state.last_signature[bufnr] = nil
-  M.refresh_auto({ force = true })
+  local context = select(1, require("markdown-table-wrap.context").resolve())
+  if not context then
+    return false
+  end
+  local source_bufnr = context.source_bufnr
+  M.state.inline_viewports[source_bufnr] = not inline_viewport_for(source_bufnr)
+  require("markdown-table-wrap.inline").reset_view(source_bufnr)
+  M.state.last_signature[source_bufnr] = nil
+  if context.mode == "source" or context.mode == "inline" then
+    M.refresh_auto({ bufnr = source_bufnr, force = true })
+  end
   vim.notify(
     string.format(
       "MarkdownTableWrap: inline viewport scrolling %s",
-      inline_viewport_for(bufnr) and "enabled" or "disabled"
+      inline_viewport_for(source_bufnr) and "enabled" or "disabled"
     ),
     vim.log.levels.INFO
   )
+  return true
 end
 
 local function wide_viewport_source()
@@ -742,7 +989,35 @@ local function wide_viewport_source()
   if reader.is_reader(bufnr) then
     return reader.source_bufnr(bufnr), bufnr
   end
+  if M.state.buf == bufnr and M.state.float_source_bufnr then
+    return M.state.float_source_bufnr, bufnr
+  end
   return bufnr, bufnr
+end
+
+local function refresh_float_view(source_bufnr)
+  if
+    M.state.buf == nil
+    or not vim.api.nvim_buf_is_valid(M.state.buf)
+    or M.state.win == nil
+    or not vim.api.nvim_win_is_valid(M.state.win)
+    or M.state.float_source_bufnr ~= source_bufnr
+  then
+    return false
+  end
+  local lnum = (M.state.float_rendered or {}).start_lnum
+  local table_info = lnum and require("markdown-table-wrap.parser").parse_at_cursor(source_bufnr, lnum) or nil
+  if not table_info then
+    return false
+  end
+  local render = require("markdown-table-wrap.render")
+  local rendered = render.render_table(table_info, config_for_buffer(source_bufnr))
+  local ok = render.update_float(M.state.buf, rendered, config_for_buffer(source_bufnr))
+  if not ok then
+    return false
+  end
+  M.state.float_rendered = rendered
+  return true
 end
 
 function M.set_wide_table_viewport(start_column, bufnr)
@@ -758,6 +1033,8 @@ function M.set_wide_table_viewport(start_column, bufnr)
   local reader = require("markdown-table-wrap.reader")
   if reader.is_reader(current) and reader.source_bufnr(current) == bufnr then
     reader.reconfigure(current, config_for_buffer(bufnr))
+  elseif M.state.buf == current and M.state.float_source_bufnr == bufnr then
+    return refresh_float_view(bufnr)
   elseif current == bufnr then
     M.state.last_signature[bufnr] = nil
     M.refresh_auto({ bufnr = bufnr, force = true })
@@ -769,6 +1046,13 @@ function M.shift_wide_table_viewport(delta, bufnr)
   bufnr = bufnr or select(1, wide_viewport_source())
   bufnr = normalize_bufnr(bufnr)
   local config = config_for_buffer(bufnr)
+  if (config.wide_table or {}).mode ~= "viewport" then
+    vim.notify(
+      "MarkdownTableWrap: column viewport movement is available only when wide_table.mode = 'viewport'",
+      vim.log.levels.INFO
+    )
+    return false
+  end
   local current = tonumber((config.wide_table or {}).viewport and config.wide_table.viewport.start_column) or 1
   return M.set_wide_table_viewport(current + (tonumber(delta) or 0), bufnr)
 end
@@ -810,7 +1094,7 @@ local function create_autocmds()
         reader.update_sticky_header(args.buf)
         return
       end
-      if not is_markdown_buffer(args.buf) then
+      if not is_auto_preview_buffer(args.buf) then
         return
       end
 
@@ -824,7 +1108,7 @@ local function create_autocmds()
     end,
   })
 
-  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "InsertLeave", "BufWinEnter", "WinScrolled" }, {
+  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "InsertLeave", "BufWinEnter" }, {
     group = M.state.augroup,
     callback = function(args)
       local bufnr = args.buf
@@ -835,7 +1119,7 @@ local function create_autocmds()
         return
       end
 
-      if not is_markdown_buffer(bufnr) then
+      if not is_auto_preview_buffer(bufnr) then
         return
       end
       if args.event == "TextChanged" or args.event == "TextChangedI" or args.event == "InsertLeave" then
@@ -867,7 +1151,7 @@ local function create_autocmds()
       for _, winid in ipairs(winids) do
         if vim.api.nvim_win_is_valid(winid) then
           local bufnr = vim.api.nvim_win_get_buf(winid)
-          if not scheduled[bufnr] and not reader.is_reader(bufnr) and is_markdown_buffer(bufnr) then
+          if not scheduled[bufnr] and not reader.is_reader(bufnr) and is_auto_preview_buffer(bufnr) then
             scheduled[bufnr] = true
             M.schedule_refresh({ bufnr = bufnr, winid = winid, silent = true })
           end
@@ -974,6 +1258,7 @@ local function create_autocmds()
       M.state.buffer_modes[args.buf] = nil
       M.state.inline_viewports[args.buf] = nil
       M.state.wide_viewports[args.buf] = nil
+      M.state.buffer_configs[args.buf] = nil
       M.state.gx_fallbacks[args.buf] = nil
       M.state.gx_installed[args.buf] = nil
       M.state.gx_callbacks[args.buf] = nil
@@ -1008,7 +1293,12 @@ local function create_autocmds()
   })
 end
 
+---@param opts? MarkdownTableWrapSetupOptions
 function M.setup(opts)
+  local setup_opts = vim.deepcopy(opts or {})
+  local reset_state = setup_opts.reset_state == true
+  setup_opts.reset_state = nil
+
   if M.state.did_setup then
     close_existing()
     local inline = require("markdown-table-wrap.inline")
@@ -1019,17 +1309,24 @@ function M.setup(opts)
     end
   end
 
-  M.config = config_module.resolve(opts)
+  M.config = config_module.resolve(setup_opts)
+  local unknown = config_module.unknown_options(opts)
+  if #unknown > 0 then
+    vim.notify("MarkdownTableWrap: unknown setup option(s): " .. table.concat(unknown, ", "), vim.log.levels.WARN)
+  end
   require("markdown-table-wrap.cache").clear()
   require("markdown-table-wrap.cache").configure(M.config.cache)
   require("markdown-table-wrap.discovery").configure(M.config.discovery)
   M.state.refresh_epoch = M.state.refresh_epoch + 1
   M.state.refresh_tokens = {}
-  M.state.paused_buffers = {}
-  M.state.auto_buffers = {}
-  M.state.buffer_modes = {}
-  M.state.inline_viewports = {}
-  M.state.wide_viewports = {}
+  if reset_state then
+    M.state.paused_buffers = {}
+    M.state.auto_buffers = {}
+    M.state.buffer_modes = {}
+    M.state.inline_viewports = {}
+    M.state.wide_viewports = {}
+  end
+  M.state.buffer_configs = {}
   M.state.last_signature = {}
   M.state.visual_buffers = {}
   M.state.inline_buf = nil
@@ -1049,7 +1346,7 @@ function M.setup(opts)
     attach_link_keymap(bufnr)
   end
 
-  if auto_preview_for(vim.api.nvim_get_current_buf()) and is_markdown_buffer() then
+  if auto_preview_for(vim.api.nvim_get_current_buf()) and is_auto_preview_buffer() then
     M.schedule_refresh({
       bufnr = vim.api.nvim_get_current_buf(),
       winid = vim.api.nvim_get_current_win(),

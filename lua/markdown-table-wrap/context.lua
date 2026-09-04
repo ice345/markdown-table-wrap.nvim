@@ -28,6 +28,13 @@ local function source_cursor(source_bufnr, view_bufnr, winid, mode)
     local plugin = require("markdown-table-wrap")
     local rendered = plugin.state.float_rendered
     local view_lnum = winid and vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_cursor(winid)[1] or 1
+    local view_col = winid and vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_cursor(winid)[2] or 0
+    local line_object = rendered and rendered.line_objects and rendered.line_objects[view_lnum] or nil
+    for _, cell in ipairs(type(line_object) == "table" and line_object.cells or {}) do
+      if view_col >= (cell.start_col or 0) and view_col < (cell.end_col or 0) and cell.source_span then
+        return { cell.source_span.start_lnum, cell.source_span.start_col }
+      end
+    end
     if rendered and rendered.source_lnums then
       return { rendered.source_lnums[view_lnum] or rendered.start_lnum or 1, 0 }
     end
@@ -90,8 +97,7 @@ end
 
 local function supported_source(plugin, source_bufnr)
   local filetype = vim.bo[source_bufnr].filetype
-  local supported = { "markdown", "md", "quarto", "rmd", "rmarkdown" }
-  vim.list_extend(supported, plugin.config.extra_filetypes or {})
+  local supported = require("markdown-table-wrap.config").filetypes(plugin.config.extra_filetypes)
   return vim.tbl_contains(supported, filetype)
 end
 
@@ -140,6 +146,10 @@ function M.resolve(opts)
   local config = plugin.get_buffer_config(source_bufnr)
   local cache_status = require("markdown-table-wrap.cache").inspect(source_bufnr)
   local discovery_status = require("markdown-table-wrap.discovery").status(source_bufnr)
+  local excess_cells = 0
+  for _, row in ipairs(table_info and table_info.rows or {}) do
+    excess_cells = excess_cells + #(row.overflow_cells or {})
+  end
   local context = {
     mode = mode,
     source_bufnr = source_bufnr,
@@ -161,6 +171,7 @@ function M.resolve(opts)
       separator_lnum = table_info.separator_lnum,
       end_lnum = table_info.end_lnum,
       columns = #table_info.header,
+      excess_cells = excess_cells,
     } or nil,
     cell = cell_context(source_bufnr, cursor, table_info),
     config = config,

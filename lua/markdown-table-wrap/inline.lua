@@ -164,7 +164,7 @@ local function virt_lines(lines, start_index)
 end
 
 local function ensure_highlights(config)
-  require("markdown-table-wrap.theme").apply(config)
+  require("markdown-table-wrap.theme").ensure(config)
 end
 
 local function cursor_in_tables(winid, tables)

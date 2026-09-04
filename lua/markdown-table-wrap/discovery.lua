@@ -1,30 +1,18 @@
 local M = {}
+local container = require("markdown-table-wrap.container")
+local fence = require("markdown-table-wrap.fence")
+local pipes = require("markdown-table-wrap.pipes")
 
 local configured_backend = "auto"
 local statuses = {}
 
-local function fence_parts(line)
-  local indent, marker, tail = line:match("^( *)([`~]+)(.*)$")
-  if not marker or #indent > 3 or #marker < 3 then
-    return nil
-  end
-  local char = marker:sub(1, 1)
-  if marker:match("^" .. char .. "+$") == nil then
-    return nil
-  end
-  return char, #marker, tail
-end
-
 local function delimiter_candidate(line)
-  local compact = vim.trim(line or "")
-  if compact:sub(1, 1) == "|" then
-    compact = compact:sub(2)
-  end
-  if compact:sub(-1) == "|" then
-    compact = compact:sub(1, -2)
-  end
   local count = 0
-  for cell in (compact .. "|"):gmatch("(.-)|") do
+  if not pipes.has(line or "") then
+    return false
+  end
+  for _, segment in ipairs(pipes.segments(line or "")) do
+    local cell = line:sub(segment.start_col, segment.end_col)
     local value = vim.trim(cell):gsub("%s+", ""):gsub("^:", ""):gsub(":$", "")
     if #value < 3 or value:match("^%-+$") == nil then
       return false
@@ -36,25 +24,26 @@ end
 
 local function lua_ranges(lines)
   local ranges = {}
-  local fence_char
-  local fence_length
+  local fenced_lines = fence.mask(lines)
   local lnum = 1
   while lnum <= #lines do
     local line = lines[lnum]
-    local char, length, tail = fence_parts(line)
-    if fence_char then
-      if char == fence_char and length >= fence_length and tail:match("^%s*$") then
-        fence_char = nil
-        fence_length = nil
-      end
+    local current = container.line(line)
+    local following = lines[lnum + 1] and container.line(lines[lnum + 1]) or nil
+    if fenced_lines[lnum] then
       lnum = lnum + 1
-    elseif char and not (char == "`" and tail:find("`", 1, true)) then
-      fence_char = char
-      fence_length = length
-      lnum = lnum + 1
-    elseif lines[lnum + 1] and line:find("|", 1, true) and delimiter_candidate(lines[lnum + 1]) then
+    elseif
+      following
+      and container.same(current, following)
+      and pipes.has(current.content)
+      and delimiter_candidate(following.content)
+    then
       local finish = lnum + 1
-      while finish + 1 <= #lines and vim.trim(lines[finish + 1]) ~= "" do
+      while finish + 1 <= #lines do
+        local candidate = container.line(lines[finish + 1])
+        if fenced_lines[finish + 1] or not container.same(current, candidate) or vim.trim(candidate.content) == "" then
+          break
+        end
         finish = finish + 1
       end
       table.insert(ranges, { start_lnum = lnum, end_lnum = finish, backend = "lua" })

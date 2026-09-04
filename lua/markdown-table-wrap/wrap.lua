@@ -1,4 +1,5 @@
 local width = require("markdown-table-wrap.width")
+local utf8 = require("markdown-table-wrap.utf8")
 
 local M = {}
 
@@ -7,6 +8,10 @@ local break_chars = {
   ["\t"] = true,
   ["、"] = true,
   ["，"] = true,
+  ["。"] = true,
+  ["！"] = true,
+  ["？"] = true,
+  ["："] = true,
   [","] = true,
   ["；"] = true,
   [";"] = true,
@@ -21,23 +26,6 @@ local code_break_chars = {
   ["-"] = true,
   ["="] = true,
 }
-
-local function iter_chars_with_pos(text)
-  local index = 1
-  return function()
-    if index > #text then
-      return nil
-    end
-
-    local start_col, end_col, ch = text:find("([%z\1-\127\194-\244][\128-\191]*)", index)
-    if not start_col then
-      return nil
-    end
-
-    index = end_col + 1
-    return ch, start_col - 1, end_col
-  end
-end
 
 local function span_kind_at(spans, start_col)
   for _, span in ipairs(spans or {}) do
@@ -54,7 +42,7 @@ local function styled_chars(cell)
   end
 
   local result = {}
-  for ch, start_col in iter_chars_with_pos(cell.text or "") do
+  for ch, start_col in utf8.iter(cell.text or "") do
     local span = span_kind_at(cell.spans, start_col)
     if type(span) == "table" then
       table.insert(result, {
@@ -163,7 +151,7 @@ local function expand_oversized_item(item, limit)
   end
 
   local pieces = {}
-  for ch in iter_chars_with_pos(item.text) do
+  for ch in utf8.iter(item.text) do
     table.insert(pieces, {
       text = ch,
       kind = item.kind,

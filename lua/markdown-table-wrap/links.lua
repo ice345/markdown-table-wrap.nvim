@@ -31,10 +31,30 @@ local function split_anchor(raw)
   return raw:sub(1, hash - 1), raw:sub(hash + 1)
 end
 
-local function decode_anchor(anchor)
-  return (anchor or ""):gsub("%%(%x%x)", function(hex)
+local function percent_decode(value)
+  return (value or ""):gsub("%%(%x%x)", function(hex)
     return string.char(tonumber(hex, 16))
   end)
+end
+
+local function decode_anchor(anchor)
+  return percent_decode(anchor)
+end
+
+local function local_file_uri(raw)
+  local value = raw:sub(6)
+  if vim.startswith(value, "//") then
+    value = value:sub(3)
+    if vim.startswith(value, "localhost/") then
+      value = value:sub(#"localhost" + 1)
+    elseif not vim.startswith(value, "/") then
+      return nil, "remote file URI hosts are not supported"
+    end
+  end
+  if value == "" then
+    return nil, "empty file URI"
+  end
+  return percent_decode(value)
 end
 
 local function slugify(text)
@@ -65,7 +85,14 @@ function M.classify(raw, opts)
   end
 
   local scheme = raw:match("^([%a][%w+%.%-]*):")
-  if scheme and not raw:match("^%a:[/\\]") then
+  if scheme and scheme:lower() == "file" then
+    local path, reason = local_file_uri(raw)
+    if not path then
+      return { kind = "unresolved", raw = raw, reason = reason, label = opts.label }
+    end
+    raw = path
+    scheme = nil
+  elseif scheme and not raw:match("^%a:[/\\]") then
     return {
       kind = "external",
       raw = raw,
@@ -306,7 +333,7 @@ local function leave_view(context)
   if context.mode == "float" then
     local plugin = require("markdown-table-wrap")
     local source_winid = plugin.state.float_source_winid
-    plugin.close_preview()
+    plugin.close_preview({ restore_origin = false })
     if source_winid and vim.api.nvim_win_is_valid(source_winid) then
       vim.api.nvim_set_current_win(source_winid)
     end
@@ -323,7 +350,19 @@ local function leave_view(context)
   return false
 end
 
-local function open_external(target, opts)
+local function open_external(target, context, opts)
+  local allowed = (((context or {}).config or {}).link or {}).allowed_schemes or { "http", "https", "mailto" }
+  if not vim.tbl_contains(allowed, target.scheme) then
+    notify(
+      string.format(
+        "refused external scheme %s; add it to link.allowed_schemes or handle it with link.resolver",
+        vim.inspect(target.scheme)
+      ),
+      vim.log.levels.WARN,
+      opts
+    )
+    return false
+  end
   if not vim.ui or type(vim.ui.open) ~= "function" then
     notify("vim.ui.open is unavailable for " .. target.raw, vim.log.levels.ERROR, opts)
     return false
@@ -396,7 +435,7 @@ function M.open_target(target, context, opts)
   end
 
   if target.kind == "external" then
-    return open_external(target, opts)
+    return open_external(target, context, opts)
   elseif target.kind == "anchor" then
     local lnum = find_anchor(context.source_bufnr, target.anchor)
     if not lnum then

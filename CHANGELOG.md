@@ -2,6 +2,59 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
+## 0.7.0 - Cross-View Reliability And Blockquote Tables
+
+### Added
+
+- Render top-level and nested blockquote pipe tables in Reader, Inline, and
+  Float while retaining visible quote depth and exact physical Source spans for
+  cells and inline tokens. Reader `yic`/`dic`/`cic`, navigation, links, and the
+  explicit table formatter all remain Source-correct across quote-spacing
+  variants; list-contained tables stay conservatively unsupported.
+- Add a shared tolerant UTF-8 iterator plus structural pipe, backtick-code,
+  fence, and container scanners. Discovery, parsing, navigation, wrapping, and
+  rendering now use one byte-column contract.
+- Add `link.allowed_schemes`, defaulting to `http`, `https`, and `mailto`.
+  Local `file:` URIs open inside Neovim; remote file hosts and untrusted schemes
+  are refused unless a custom resolver handles them.
+- Add setup-time diagnostics for unknown fixed option names and the one-shot
+  `reset_state = true` control for intentionally clearing per-buffer policy.
+- Show excess Source-cell counts in Reader/Inline/Float, context, Inspect, and
+  health output before structural edits or structured exports refuse the
+  ambiguous table.
+
+### Changed
+
+- Keep automatic Reader as the default. Repeated `setup()` calls now preserve
+  explicit per-buffer pause, automatic-preview, selected-view, and viewport
+  intent unless `reset_state = true` is supplied.
+- Make public preview, status, automatic-preview, Inline-viewport, navigation,
+  and wide-table viewport commands resolve Reader and Float through their
+  canonical Source buffer.
+- Make Float a reversible view transition: `q`, `<Esc>`, close, and toggle
+  restore the originating Source, Reader, or Inline view; Reader returns to the
+  same logical cell, including after a Float refresh.
+- Format against raw Markdown display width, preserve blockquote containment,
+  refuse row deletion/movement from a header, and give the isolated cell editor
+  bounded soft-wrapped growth.
+- Follow Neovim's `'clipboard'` option for copy/export system-register writes,
+  prefer additional CJK sentence punctuation as wrap boundaries, and expand
+  LuaLS types, health checks, contributor guidance, performance diagnostics,
+  and the concise README contract.
+
+### Fixed
+
+- Prevent a queued automatic Reader refresh from immediately replacing a Float
+  opened from Reader through a real leader mapping.
+- Keep Float navigation and hidden-column viewport movement on logical cells,
+  and map the Float cursor back to the exact Source cell for context and links.
+- Avoid repeated configuration/theme deep work and unchanged `WinScrolled`
+  refresh scheduling; internal read-only cache paths retain public isolated-copy
+  behavior and substantially reduce unchanged Reader refresh allocation.
+- Exclude help and cell-editor scratch buffers from automatic preview, preserve
+  user policy during setup re-entry, and clean all new buffer-owned state on
+  wipeout.
+
 ## 0.6.0 - Reader Semantics And Lifecycle Hardening
 
 ### Fixed

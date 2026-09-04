@@ -125,3 +125,27 @@ h.test("theme presets and overrides", function()
   vim.api.nvim_set_hl(0, "Normal", previous_normal)
   vim.api.nvim_set_hl(0, "Title", previous_title)
 end)
+
+h.test("theme ensure skips unchanged highlight application", function()
+  local theme = require("markdown-table-wrap.theme")
+  local config = { highlight_preset = "default" }
+  theme.apply(config)
+
+  local original_set_hl = vim.api.nvim_set_hl
+  local calls = 0
+  vim.api.nvim_set_hl = function(...)
+    calls = calls + 1
+    return original_set_hl(...)
+  end
+  local ok, err = pcall(function()
+    h.assert_false("unchanged theme is already applied", theme.ensure(config))
+    h.assert_eq("unchanged theme defines no highlights", calls, 0)
+    h.assert_true("changed theme is applied", theme.ensure({ highlight_preset = "catppuccin" }))
+    h.assert_true("changed theme defines highlights", calls > 0)
+  end)
+  vim.api.nvim_set_hl = original_set_hl
+  theme.apply(config)
+  if not ok then
+    error(err, 0)
+  end
+end)

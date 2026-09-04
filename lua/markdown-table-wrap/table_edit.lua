@@ -1,9 +1,43 @@
-local markdown = require("markdown-table-wrap.markdown")
 local parser = require("markdown-table-wrap.parser")
 local width = require("markdown-table-wrap.width")
 
 local M = {}
 local popup_state = nil
+
+local function popup_dimensions(lines)
+  local max_width = math.max(1, vim.o.columns - 4)
+  local min_width = math.min(30, max_width)
+  local longest = 0
+  for _, line in ipairs(lines or {}) do
+    longest = math.max(longest, width.strwidth(line))
+  end
+  local popup_width = math.min(max_width, math.max(min_width, longest + 4))
+  local content_width = math.max(1, popup_width - 2)
+  local display_lines = 0
+  for _, line in ipairs(lines or {}) do
+    display_lines = display_lines + math.max(1, math.ceil(width.strwidth(line) / content_width))
+  end
+  local max_height = math.max(3, math.min(12, vim.o.lines - vim.o.cmdheight - 4))
+  return popup_width, math.min(max_height, math.max(3, display_lines))
+end
+
+local function resize_cell_popup()
+  if not popup_state or not popup_state.buf or not popup_state.win then
+    return
+  end
+  if not vim.api.nvim_buf_is_valid(popup_state.buf) or not vim.api.nvim_win_is_valid(popup_state.win) then
+    return
+  end
+  local lines = vim.api.nvim_buf_get_lines(popup_state.buf, 0, -1, false)
+  local popup_width, popup_height = popup_dimensions(lines)
+  pcall(vim.api.nvim_win_set_config, popup_state.win, {
+    relative = "editor",
+    width = popup_width,
+    height = popup_height,
+    row = math.max(0, math.floor((vim.o.lines - popup_height) / 2)),
+    col = math.max(0, math.floor((vim.o.columns - popup_width) / 2)),
+  })
+end
 
 local function notify(message, level, opts)
   if not (opts or {}).silent then
@@ -27,7 +61,7 @@ local function source_context(opts)
   elseif context.mode == "float" then
     local plugin = require("markdown-table-wrap")
     local source_winid = plugin.state.float_source_winid
-    plugin.close_preview()
+    plugin.close_preview({ restore_origin = false })
     if source_winid and vim.api.nvim_win_is_valid(source_winid) then
       vim.api.nvim_set_current_win(source_winid)
     end
@@ -90,7 +124,7 @@ local function rows_from(table_info)
 end
 
 local function source_width(value)
-  return math.max(1, width.strwidth(markdown.inline_to_text(value or "")))
+  return math.max(1, width.strwidth(value or ""))
 end
 
 local function format_delimiter(alignment, target_width)
@@ -117,7 +151,7 @@ local function canonical_lines(table_info, rows, alignments)
   local columns = #(rows[1] or table_info.header)
   local widths = {}
   for index = 1, columns do
-    local target = 3
+    local target = alignments[index] == "center" and 5 or 4
     for _, row in ipairs(rows) do
       target = math.max(target, source_width(row[index] or ""))
     end
@@ -134,6 +168,12 @@ local function canonical_lines(table_info, rows, alignments)
   table.insert(lines, format_row(delimiters, widths, delimiter_alignments))
   for index = 2, #rows do
     table.insert(lines, format_row(rows[index], widths, alignments))
+  end
+  local prefix = (table_info.container or {}).render_prefix or ""
+  if prefix ~= "" then
+    for index, line in ipairs(lines) do
+      lines[index] = prefix .. line
+    end
   end
   return lines
 end
@@ -179,10 +219,13 @@ local function table_and_rows(opts)
 end
 
 local function current_row(table_info, context, opts)
-  local index = tonumber(opts and opts.index) or (context.cell and context.cell.row_index) or 1
-  if index <= 0 then
-    index = 1
+  local explicit = tonumber(opts and opts.index)
+  local index = explicit or (context.cell and context.cell.row_index)
+  if not explicit and (index == nil or index <= 0) then
+    notify("place the cursor in a table body row", vim.log.levels.INFO, opts)
+    return nil
   end
+  index = index or 1
   return math.max(1, math.min(#table_info.rows, math.floor(index)))
 end
 
@@ -223,6 +266,9 @@ function M.delete_row(opts)
     return false
   end
   local position = current_row(table_info, context, opts)
+  if not position then
+    return false
+  end
   table.remove(rows, position + 1)
   return replace_table(context, table_info, rows, vim.deepcopy(table_info.align), opts)
 end
@@ -233,6 +279,9 @@ local function move_row(opts, direction)
     return false
   end
   local position = current_row(table_info, context, opts)
+  if not position then
+    return false
+  end
   local target = math.max(1, math.min(#table_info.rows, position + direction))
   if target == position then
     return true
@@ -344,18 +393,18 @@ function M.open_cell_popup(opts)
 
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, { raw_cell(cell) })
+  vim.b[buf].markdown_table_wrap_auxiliary = true
   vim.bo[buf].buftype = "nofile"
   vim.bo[buf].bufhidden = "wipe"
   vim.bo[buf].swapfile = false
-  vim.bo[buf].filetype = "markdown"
-  local max_width = math.max(1, vim.o.columns - 4)
-  local min_width = math.min(30, max_width)
-  local width_value = math.min(max_width, math.max(min_width, width.strwidth(raw_cell(cell)) + 4))
+  vim.bo[buf].filetype = "markdown-table-wrap-cell"
+  vim.bo[buf].syntax = "markdown"
+  local width_value, height_value = popup_dimensions({ raw_cell(cell) })
   local win = vim.api.nvim_open_win(buf, true, {
     relative = "editor",
     width = width_value,
-    height = 3,
-    row = math.max(0, math.floor((vim.o.lines - 3) / 2)),
+    height = height_value,
+    row = math.max(0, math.floor((vim.o.lines - height_value) / 2)),
     col = math.max(0, math.floor((vim.o.columns - width_value) / 2)),
     style = "minimal",
     border = context.config.border or "rounded",
@@ -370,6 +419,13 @@ function M.open_cell_popup(opts)
     source_changedtick = vim.api.nvim_buf_get_changedtick(context.source_bufnr),
   }
   vim.bo[buf].modifiable = true
+  vim.wo[win].wrap = true
+  vim.wo[win].linebreak = true
+  vim.wo[win].breakindent = true
+  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+    buffer = buf,
+    callback = resize_cell_popup,
+  })
   vim.keymap.set({ "n", "i" }, "<C-s>", function()
     M.commit_cell_popup()
   end, { buffer = buf, silent = true, desc = "Save Markdown table cell" })

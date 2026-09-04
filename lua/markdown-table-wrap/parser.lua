@@ -1,5 +1,8 @@
 local M = {}
 local markdown = require("markdown-table-wrap.markdown")
+local container = require("markdown-table-wrap.container")
+local fence = require("markdown-table-wrap.fence")
+local pipes = require("markdown-table-wrap.pipes")
 
 local function trim(value)
   if type(value) == "table" then
@@ -8,141 +11,10 @@ local function trim(value)
   return (value:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
-local function next_char_at(text, index)
-  local start_col, end_col, ch = text:find("([%z\1-\127\194-\244][\128-\191]*)", index)
-  if not start_col then
-    return nil
-  end
-  return ch, start_col, end_col
-end
-
-local function backtick_run_at(text, index)
-  local count = 0
-  local cursor = index
-
-  while cursor <= #text do
-    local ch, _, end_col = next_char_at(text, cursor)
-    if ch ~= "`" then
-      break
-    end
-    count = count + 1
-    cursor = end_col + 1
-  end
-
-  return count, cursor - 1
-end
-
-local function fence_parts(line)
-  local indent, marker, tail = line:match("^( *)([`~]+)(.*)$")
-  if not marker or #indent > 3 or #marker < 3 then
-    return nil
-  end
-
-  local char = marker:sub(1, 1)
-  if marker:match("^" .. char .. "+$") == nil then
-    return nil
-  end
-
-  return char, #marker, tail
-end
-
-local function fence_opener(line)
-  local char, length, tail = fence_parts(line)
-  if not char or (char == "`" and tail:find("`", 1, true)) then
-    return nil
-  end
-
-  return char, length
-end
-
-local function is_fence_closer(line, fence_char, fence_length)
-  local char, length, tail = fence_parts(line)
-  return char == fence_char and length >= fence_length and tail:match("^[ \t]*$") ~= nil
-end
-
-local function has_unescaped_pipe(line)
-  local code_ticks = nil
-  local escaped = false
-  local index = 1
-
-  while index <= #line do
-    local ch, _, end_col = next_char_at(line, index)
-    if not ch then
-      break
-    end
-
-    if escaped then
-      escaped = false
-    elseif ch == "\\" then
-      escaped = true
-    elseif ch == "`" then
-      local count, run_end = backtick_run_at(line, index)
-      if not code_ticks then
-        code_ticks = count
-      elseif count == code_ticks then
-        code_ticks = nil
-      end
-      index = run_end + 1
-      goto continue
-    elseif ch == "|" and not code_ticks then
-      return true
-    end
-
-    index = end_col + 1
-    ::continue::
-  end
-
-  return false
-end
-
-local function split_pipe_row(line, lnum, references)
-  local segments = {}
-  local code_ticks = nil
-  local escaped = false
-  local segment_start = 1
-  local index = 1
-
-  while index <= #line do
-    local ch, _, end_col = next_char_at(line, index)
-    if not ch then
-      break
-    end
-
-    if escaped then
-      escaped = false
-    elseif ch == "\\" then
-      escaped = true
-    elseif ch == "`" then
-      local count, run_end = backtick_run_at(line, index)
-      if not code_ticks then
-        code_ticks = count
-      elseif count == code_ticks then
-        code_ticks = nil
-      end
-      index = run_end + 1
-      goto continue
-    elseif ch == "|" and not code_ticks then
-      table.insert(segments, { start_col = segment_start, end_col = index - 1 })
-      segment_start = end_col + 1
-    end
-
-    index = end_col + 1
-    ::continue::
-  end
-
-  table.insert(segments, { start_col = segment_start, end_col = #line })
-
-  local stripped = trim(line)
-  if vim.startswith(stripped, "|") then
-    table.remove(segments, 1)
-  end
-  local last_segment = segments[#segments]
-  if last_segment and line:sub(last_segment.start_col, last_segment.end_col):match("^%s*$") and #segments > 1 then
-    table.remove(segments)
-  end
-
+local function split_pipe_row(line, lnum, references, source_offset)
+  source_offset = tonumber(source_offset) or 0
   local cells = {}
-  for cell_index, segment in ipairs(segments) do
+  for cell_index, segment in ipairs(pipes.segments(line)) do
     local start_col = segment.start_col
     local end_col = segment.end_col
     while start_col <= end_col and line:sub(start_col, start_col):match("%s") do
@@ -159,9 +31,9 @@ local function split_pipe_row(line, lnum, references)
     cell.column_index = cell_index
     cell.source_span = {
       start_lnum = lnum,
-      start_col = start_col - 1,
+      start_col = source_offset + start_col - 1,
       end_lnum = lnum,
-      end_col = math.max(start_col - 1, end_col),
+      end_col = source_offset + math.max(start_col - 1, end_col),
     }
     for _, token in ipairs(cell.tokens or {}) do
       token.cell_source_start_col = token.source_start_col
@@ -204,7 +76,7 @@ local function parse_alignment(cell)
 end
 
 local function is_separator_row(line)
-  if not has_unescaped_pipe(line) then
+  if not pipes.has(line) then
     return false
   end
 
@@ -223,7 +95,7 @@ local function is_separator_row(line)
 end
 
 local function is_tableish_line(line)
-  return line and trim(line) ~= "" and has_unescaped_pipe(line)
+  return line and trim(line) ~= "" and pipes.has(line)
 end
 
 local function starts_atx_heading(content)
@@ -347,11 +219,7 @@ local function starts_block(line)
     return true
   end
 
-  if content:sub(1, 1) == ">" then
-    return true
-  end
-
-  if fence_opener(line) then
+  if fence.opener(line) then
     return true
   end
 
@@ -402,19 +270,23 @@ end
 local function parse_table_at(lines, start_lnum, references)
   local header_line = lines[start_lnum]
   local separator_line = lines[start_lnum + 1]
+  local header_container = container.line(header_line)
+  local separator_container = container.line(separator_line)
 
   if
     not separator_line
-    or not is_tableish_line(header_line)
-    or starts_block(header_line)
-    or starts_block(separator_line)
-    or not is_separator_row(separator_line)
+    or not container.same(header_container, separator_container)
+    or not is_tableish_line(header_container.content)
+    or starts_block(header_container.content)
+    or starts_block(separator_container.content)
+    or not is_separator_row(separator_container.content)
   then
     return nil
   end
 
-  local header = split_pipe_row(header_line, start_lnum, references)
-  local separator = split_pipe_row(separator_line, start_lnum + 1, references)
+  local header = split_pipe_row(header_container.content, start_lnum, references, header_container.content_start_col)
+  local separator =
+    split_pipe_row(separator_container.content, start_lnum + 1, references, separator_container.content_start_col)
 
   if #header == 0 then
     return nil
@@ -435,11 +307,25 @@ local function parse_table_at(lines, start_lnum, references)
 
   while lnum <= #lines do
     local line = lines[lnum]
-    if trim(line) == "" or starts_block(line) then
+    local row_container = container.line(line)
+    if
+      not container.same(header_container, row_container)
+      or trim(row_container.content) == ""
+      or starts_block(row_container.content)
+    then
       break
     end
 
-    table.insert(rows, normalize_row(split_pipe_row(line, lnum, references), #header, lnum, line, "body"))
+    table.insert(
+      rows,
+      normalize_row(
+        split_pipe_row(row_container.content, lnum, references, row_container.content_start_col),
+        #header,
+        lnum,
+        line,
+        "body"
+      )
+    )
     end_lnum = lnum
     lnum = lnum + 1
   end
@@ -493,13 +379,19 @@ local function parse_table_at(lines, start_lnum, references)
     },
     align = align,
     rows = rows,
+    container = header_container.kind == "blockquote" and {
+      kind = header_container.kind,
+      depth = header_container.depth,
+      render_prefix = header_container.render_prefix,
+    } or nil,
   }
 end
 
 local function collect_references(lines)
   local references = {}
   for lnum, line in ipairs(lines) do
-    local label, target = line:match("^%s?%s?%s?%[([^%]]+)%]:%s*(%S+)")
+    local content = container.line(line).content
+    local label, target = content:match("^%s?%s?%s?%[([^%]]+)%]:%s*(%S+)")
     if label and target then
       if target:sub(1, 1) == "<" and target:sub(-1) == ">" then
         target = target:sub(2, -2)
@@ -515,9 +407,6 @@ end
 
 local function parse_lines(lines, stop_lnum, opts)
   local tables = {}
-  local fenced_lines = {}
-  local fence_char = nil
-  local fence_length = nil
   local lnum = 1
   local references = (opts or {}).references or collect_references(lines)
 
@@ -531,34 +420,21 @@ local function parse_lines(lines, stop_lnum, opts)
         end
       end
     end
-    return tables, fenced_lines
+    return tables, {}
   end
 
-  while lnum <= #lines and (not stop_lnum or lnum <= stop_lnum) do
-    local line = lines[lnum]
+  local fenced_lines = fence.mask(lines)
 
-    if fence_char then
-      fenced_lines[lnum] = true
-      if is_fence_closer(line, fence_char, fence_length) then
-        fence_char = nil
-        fence_length = nil
-      end
+  while lnum <= #lines and (not stop_lnum or lnum <= stop_lnum) do
+    if fenced_lines[lnum] then
       lnum = lnum + 1
     else
-      local opener_char, opener_length = fence_opener(line)
-      if opener_char then
-        fenced_lines[lnum] = true
-        fence_char = opener_char
-        fence_length = opener_length
-        lnum = lnum + 1
+      local table_info = parse_table_at(lines, lnum, references)
+      if table_info then
+        table.insert(tables, table_info)
+        lnum = table_info.end_lnum + 1
       else
-        local table_info = parse_table_at(lines, lnum, references)
-        if table_info then
-          table.insert(tables, table_info)
-          lnum = table_info.end_lnum + 1
-        else
-          lnum = lnum + 1
-        end
+        lnum = lnum + 1
       end
     end
   end
@@ -582,7 +458,7 @@ function M.parse_at_cursor(bufnr, cursor_lnum)
     return nil, "MarkdownTableWrap: cursor is inside a fenced code block."
   end
 
-  local current = lines[cursor_lnum] or ""
+  local current = container.line(lines[cursor_lnum] or "").content
   if not is_tableish_line(current) then
     return nil, "MarkdownTableWrap: cursor is not inside a Markdown pipe table."
   end
@@ -590,20 +466,27 @@ function M.parse_at_cursor(bufnr, cursor_lnum)
   return nil, "MarkdownTableWrap: no valid Markdown table separator row found."
 end
 
-function M.parse_all(bufnr, opts)
+local function parse_all(bufnr, opts, readonly)
   opts = type(opts) == "table" and opts or {}
   local changedtick = vim.api.nvim_buf_get_changedtick(bufnr)
   local backend = opts.backend or (opts.discovery or {}).backend or "default"
   local cache_key = table.concat({ tostring(backend), tostring(opts.cache ~= false) }, "\31")
   local cache = require("markdown-table-wrap.cache")
-  local cached = opts.cache == false and nil or cache.get(bufnr, "parse", cache_key, changedtick)
+  local cached
+  if opts.cache ~= false then
+    if readonly then
+      cached = cache.get_ref(bufnr, "parse", cache_key, changedtick)
+    else
+      cached = cache.get(bufnr, "parse", cache_key, changedtick)
+    end
+  end
   if cached then
     return cached
   end
 
   local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
   local discovery_key = backend
-  local ranges = opts.cache == false and nil or cache.get(bufnr, "discovery", discovery_key, changedtick)
+  local ranges = opts.cache ~= false and cache.get_ref(bufnr, "discovery", discovery_key, changedtick) or nil
   if not ranges then
     ranges = require("markdown-table-wrap.discovery").discover(
       bufnr,
@@ -611,7 +494,7 @@ function M.parse_all(bufnr, opts)
       { backend = backend ~= "default" and backend or nil }
     )
     if opts.cache ~= false then
-      cache.set(bufnr, "discovery", discovery_key, changedtick, ranges)
+      cache.set_ref(bufnr, "discovery", discovery_key, changedtick, ranges)
     end
   end
   local tables = parse_lines(lines, nil, { ranges = ranges })
@@ -638,9 +521,23 @@ function M.parse_all(bufnr, opts)
     end
   end
   if opts.cache ~= false then
-    cache.set(bufnr, "parse", cache_key, changedtick, tables)
+    if readonly then
+      cache.set_ref(bufnr, "parse", cache_key, changedtick, tables)
+    else
+      cache.set(bufnr, "parse", cache_key, changedtick, tables)
+    end
   end
   return tables
+end
+
+function M.parse_all(bufnr, opts)
+  return parse_all(bufnr, opts, false)
+end
+
+-- Internal read-only adapter used by full-view construction. Public callers
+-- keep the isolated-copy contract of parse_all().
+function M.parse_all_ref(bufnr, opts)
+  return parse_all(bufnr, opts, true)
 end
 
 function M.parse_lines(lines, opts)

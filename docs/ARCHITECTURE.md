@@ -53,28 +53,29 @@ text or user intent.
 | Module | Responsibility |
 | --- | --- |
 | `init.lua` | Public API, per-Source policy/overrides, lifecycle orchestration, refresh scheduling, and high-level view selection |
-| `config.lua` | Owns immutable configuration defaults and returns validated, normalized copies for `setup()` |
+| `config.lua` | Owns immutable configuration defaults, validates/normalizes copies for `setup()`, and diagnoses unknown fixed option names |
 | `commands.lua` | Registers public user commands and stable global `<Plug>` action mappings against the public API |
 | `discovery.lua` | Finds candidate table ranges through deterministic Lua or explicit optional Tree-sitter discovery; records backend/fallback diagnostics |
 | `parser.lua` | Validates table structure and builds exact table/row/cell/delimiter Source models from a live buffer or a pure line array |
+| `utf8.lua` / `pipes.lua` / `fence.lua` / `container.lua` | Provide the shared tolerant byte scanner, structural pipe/code-span rules, fenced-code mask, and blockquote-prefix mapping used by discovery, parsing, navigation, wrapping, and rendering |
 | `markdown.lua` | Tokenizes supported inline Markdown inside cells and retains Source/render coordinates and target metadata |
 | `wrap.lua` | Wraps styled cell content at display-width-safe character boundaries while retaining token and Source metadata |
 | `width.lua` | Unicode display-width measurement, padding, alignment, and repeated border characters |
-| `render.lua` | Allocates column widths and produces rendered line objects, borders, semantic chunks, cell segments, and Float views |
+| `render.lua` | Allocates column widths and produces rendered line objects, borders, semantic chunks, cell segments, and refreshable Float views |
 | `inline.lua` | Owns Source-buffer extmarks, inline replace/insert presentation, window wrap restoration, and optional viewport offsets |
 | `reader.lua` | Builds full-document Reader buffers, maps Reader lines/cells to Source, protects rendered tables from secondary Markdown parsing, and owns Reader lifecycle |
 | `cell_ops.lua` | Resolves the logical Reader cell, performs exact Source-span yank/mutation operations, enters Source Insert for changes, and installs configurable cell mappings/fallbacks |
-| `export.lua` | Resolves Source-backed cell/table identity, copies semantic rendered values, and serializes selected tables as TSV/CSV without Source mutation |
-| `table_edit.lua` | Performs explicit, validated Source table rewrites (format, row/column structure, alignment) and one-cell popup edits; never participates in automatic rendering |
-| `context.lua` | Resolves any view to one mode-independent Source/table/cell/window context |
+| `export.lua` | Resolves Source-backed cell/table identity, copies semantic rendered values, refuses ambiguous excess-cell tables, and serializes selected tables as TSV/CSV without Source mutation |
+| `table_edit.lua` | Performs explicit, validated Source table rewrites (format, row/column structure, alignment) and isolated one-cell popup edits; never participates in automatic rendering |
+| `context.lua` | Resolves any view to one mode-independent Source/table/cell/window context, including the rendered Float cell under the cursor |
 | `actions.lua` | Dispatches mode-independent commands and safely leaves disposable views before buffer/window operations |
-| `links.lua` | Extracts/classifies targets, resolves paths relative to Source, opens targets, and supports custom resolution |
+| `links.lua` | Extracts/classifies targets, resolves local paths/file URIs relative to Source, enforces the external-scheme allowlist, and supports custom resolution |
 | `mappings.lua` | Captures, invokes, and restores user mappings without losing callback/expr/remap/keycode behavior |
 | `cache.lua` | Owns changedtick/signature-keyed discovery, parse, and layout entries and global counters |
 | `events.lua` | Emits normalized `User` events without exposing mutable internal tables |
 | `inspect.lua` / `health.lua` | Report resolved context, mappings, backend, caches, modules, renderer coexistence, and configuration health |
 | `theme.lua` | Defines and applies highlight presets and overrides |
-| `nav.lua` | Source-table cell movement and Source link fallback helpers |
+| `nav.lua` | Logical cell movement across Source, Inline, Reader, and Float plus Source link fallback helpers |
 | `types.lua` | LuaLS annotations for the public context, target, configuration, and source-spanned model contracts |
 
 ## Source-Spanned Model
@@ -105,6 +106,14 @@ responsible for structural validation and Markdown block boundaries. Explicit
 `"treesitter"` discovery may return pipe-table nodes, but missing, incompatible,
 or unhelpful parsers fall back to Lua. Both paths feed the same parser and model.
 
+Discovery, parsing, and navigation share one escaped-pipe/backtick scanner and
+one fenced-code implementation. Blockquote rows are parsed after stripping
+their container prefix, while cell and token columns are offset back to exact
+physical Source bytes. Rendering adds a normalized visible quote prefix and
+explicit Source formatting preserves containment. List containers remain a
+conservative unsupported boundary until their continuation rules can provide
+the same lossless span guarantee.
+
 Inline Markdown is deliberately scoped to table-cell display semantics. The
 tokenizer supports the documented code/link/emphasis/image/wiki/autolink forms,
 but unmatched or unsupported syntax stays literal rather than being partially
@@ -125,6 +134,10 @@ then places one authoritative conceal/overlay extmark on each rendered table
 line. The overlay
 prevents the Reader's Markdown filetype or another renderer from reparsing
 underscores and angle brackets and visually moving borders.
+
+Rows with cells beyond the header retain those cells only in Source metadata.
+The derived rendering appends a DiagnosticWarn line with the excess count so
+the unsupported shape is visible instead of silently appearing complete.
 
 ## Reader Cell Operations And Selection
 
@@ -198,9 +211,12 @@ Source/Reader context → stable table/cell identity
 `export.lua` always resolves the canonical Source buffer first. Reader and
 Float may reuse their already-built rendered table, while Source and Inline
 render on demand with the active window configuration. Clipboard writes update
-the unnamed/yank registers (and `+` when enabled); no export path edits Source.
+the unnamed/yank registers and follow Neovim's `clipboard` option for `+`/`*`;
+an API caller may explicitly force or suppress the additional system-register
+write. No export path edits Source.
 TSV uses C-style escapes for control characters, and CSV doubles embedded
-quotes and quotes fields containing delimiters or line breaks.
+quotes and quotes fields containing delimiters or line breaks. Structured
+export refuses a table with excess Source cells before changing any register.
 
 ## Source Editing Companion
 
@@ -224,13 +240,18 @@ current view → context/source resolution → parse current table
 Formatting and row/column operations replace the table's complete physical
 range in one `nvim_buf_set_lines()` call. This makes each command one normal
 undo unit and avoids a partially rewritten delimiter or row. The formatter
-uses display width for padding and emits parser-valid delimiter cells. Tables
-with excess Source cells are refused before any mutation; deleting the final
-column is also refused. Missing normalized cells remain empty and are never
-silently reconstructed from neighboring text.
+uses the display width of raw Markdown Source text for padding and emits
+parser-valid delimiter cells, so literal pipe columns stay aligned in Source.
+Tables with excess Source cells are refused before any mutation; deleting the
+final column is also refused. Header and delimiter positions cannot be used as
+implicit body rows for delete/move operations. Missing normalized cells remain
+empty and are never silently reconstructed from neighboring text.
 
-`MarkdownTableEditCell` uses a nofile scratch float only as a focused editor for
-one present, one-line Source span. `<C-s>` commits the popup text with one
+`MarkdownTableEditCell` uses a nofile scratch float with the isolated
+`markdown-table-wrap-cell` filetype only as a focused editor for one present,
+one-line Source span. It is marked auxiliary so automatic preview ignores it.
+Long content soft-wraps, and TextChanged resizes the window within a bounded
+height. `<C-s>` commits the popup text with one
 `nvim_buf_set_text()` range replacement; `Esc`/`q` discards it. The popup is not
 an alternate document buffer, has no save path, and is always disposable. A
 Reader or Float is closed before a commit so Neovim's normal Source undo,
@@ -242,9 +263,12 @@ There are several intentionally separate state layers:
 
 - `M.config`: validated global configuration produced by `config.resolve()`
   during `setup()`; defaults and caller options are deep-copied before
-  normalization.
-- `M.state`: high-level Float ownership plus per-Source mode, auto-preview,
-  pause, viewport, refresh token, signature, and mapping overrides.
+  normalization. `init.lua` memoizes the effective read-only configuration per
+  Source/override tuple; the public `get_buffer_config()` boundary still
+  returns an isolated deep copy. Viewport cursor adjustment uses copy-on-write.
+- `M.state`: high-level Float ownership and its originating-view snapshot plus
+  per-Source mode, auto-preview, pause, viewport, refresh token, signature, and
+  mapping overrides.
 - `reader.lua`: Reader-buffer states and shared Source ownership. One Source may
   have multiple width-specific Reader windows; each state records the Source
   changedtick used to build its projection so cell actions can reject stale
@@ -281,10 +305,16 @@ caches, invalidates scheduled refresh epochs, recreates one augroup, asks
 `commands.lua` to register public commands/mappings, applies the theme, and
 reconfigures surviving Reader views. Commands depend only on the public module
 surface passed to their registrar; configuration resolution does not mutate
-its defaults or the caller's option table.
+its defaults or the caller's option table. Repeated setup preserves explicit
+per-Source pause, auto-preview, mode, and viewport policy; the one-shot
+`reset_state = true` option clears those policies when an intentional reset is
+needed. Derived signatures/config copies and transient visual state are always
+invalidated.
 
-Relevant lifecycle events are debounced per Source buffer. Each scheduled
-refresh captures the Source's token and the global setup epoch; stale callbacks
+Relevant content, entry, and resize lifecycle events are debounced per Source
+buffer. Plain `WinScrolled` movement does not rebuild a view because neither
+Source text nor layout width changed. Each scheduled refresh captures the
+Source's token and the global setup epoch; stale callbacks
 exit without touching state, and unexpected callback failures are reported
 without escaping the scheduled boundary. Text changes refresh visible dependent
 Readers or recompute Inline. Resize events fan out to every affected visible
@@ -322,11 +352,31 @@ the view, canonical Source, mapped Source cursor, table/cell metadata, window,
 cache status, discovery backend, and effective configuration. Actions use this
 context instead of branching on buffer names.
 
+Explicit preview transitions also resolve before disposing a Reader or Float.
+They restore the mapped Source cursor, construct the requested view from that
+Source, and refocus the same logical cell when the destination supports it.
+This keeps public preview commands valid in every derived view instead of
+testing a scratch buffer's synthetic filetype. An active explicit Float is
+also a scheduling boundary: automatic refresh callbacks for its Source exit
+without replacing the Float, including a callback queued by the temporary
+Reader-to-Source hop. Float creation records a small origin snapshot (mode,
+Source cursor/cell, and pause intent). Its close keys and public close/toggle
+actions consume that snapshot to restore Source, Reader, or Inline; view
+transitions and Source-mutating actions explicitly discard it. Float refresh
+preserves it.
+
+Auto-preview enable/disable/toggle, Inline viewport toggle, and status always
+resolve the current view through `context.lua` before reading or changing
+policy. Derived buffer numbers must never become keys in the per-Source policy
+tables.
+
 File targets resolve relative to the Source path even when invoked from Reader
 or Float. Actions that change buffers first dispose of the temporary view and
 restore Source ownership. Reader passthrough mappings may run a named plugin
 action, run a captured mapping in Source context, or leave Reader before
-invocation. Captured mappings must be restored exactly.
+invocation. Captured mappings must be restored exactly. Local `file:` URIs use
+the same Source-relative file path and remain inside Neovim. Other URI schemes
+must be in the configured allowlist or be accepted by a custom resolver.
 
 ## Cache And Invalidation
 
@@ -339,9 +389,13 @@ Buffer-owned cache stages are independent:
 - inline-token cache: bounded process-local cache keyed by input/reference
   signature.
 
-Cache values are copied at the boundary so callers cannot mutate stored model
-state. Source wipe and repeated `setup()` clear owned entries. New options that
-affect any derived output must be added to the corresponding signature.
+Public parser/render cache values are copied at the boundary so callers cannot
+mutate stored model state. Full-view construction uses an internal read-only
+reference path to avoid copying complete parse and layout trees on every cache
+hit; ownership transfers to the cache, and internal consumers must never mutate
+those objects. Source wipe and repeated `setup()` clear owned entries. New
+options that affect any derived output must be added to the corresponding
+explicit signature.
 
 ## Scaling Constraints
 

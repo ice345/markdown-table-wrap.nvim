@@ -9,7 +9,7 @@ rename its development branch as part of a release.
 - Repository: `ice345/markdown-table-wrap.nvim`
 - Remote: `origin` (`git@github.com:ice345/markdown-table-wrap.nvim.git`)
 - Development/release branch: `master`
-- Latest published tag: `v0.6.0`
+- Latest published tag: `v0.7.0`
 - Next planned release: not yet scheduled; the maintainer-local `ROADMAP.md`
   retains the longer-term v1.0 public-contract work.
 - Supported Neovim baseline: 0.10+
@@ -25,7 +25,7 @@ git tag --sort=-version:refname | head
 ```
 
 The v0.4.0 section below is the retained release record and checklist example;
-the same gates apply to v0.6.0 and later releases. Substitute the target
+the same gates apply to v0.7.0 and later releases. Substitute the target
 version and milestone scope from the maintainer-local `ROADMAP.md`. Release
 only from `master`, with no unrelated local changes, after the branch is up to
 date with `origin/master`.

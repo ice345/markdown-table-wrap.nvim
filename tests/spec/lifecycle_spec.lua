@@ -21,6 +21,30 @@ local function delete_buffer(buf)
   end
 end
 
+h.test("window scrolling does not schedule a table rebuild", function()
+  local plugin = require("markdown-table-wrap")
+  plugin.setup({ auto_preview = false, preview_mode = "inline" })
+
+  h.with_buffer(table_lines, function(buf)
+    vim.bo[buf].filetype = "markdown"
+    local original_schedule = plugin.schedule_refresh
+    local schedules = 0
+    plugin.schedule_refresh = function()
+      schedules = schedules + 1
+    end
+    local ok, err = pcall(function()
+      vim.api.nvim_exec_autocmds("WinScrolled", { modeline = false })
+      h.assert_eq("WinScrolled schedules no refresh", schedules, 0)
+      vim.api.nvim_exec_autocmds("TextChanged", { buffer = buf, modeline = false })
+      h.assert_eq("text changes still schedule refresh", schedules, 1)
+    end)
+    plugin.schedule_refresh = original_schedule
+    if not ok then
+      error(err, 0)
+    end
+  end)
+end)
+
 h.test("debounced refreshes are isolated by buffer and keep their scheduled target", function()
   local plugin = require("markdown-table-wrap")
   local inline = require("markdown-table-wrap.inline")
@@ -318,6 +342,38 @@ h.test("repeated setup resets inline viewport offsets", function()
   end)
 end)
 
+h.test("repeated setup preserves per-buffer intent unless reset_state is explicit", function()
+  local plugin = require("markdown-table-wrap")
+  plugin.setup({ auto_preview = false, preview_mode = "reader" })
+
+  h.with_buffer(table_lines, function(buf)
+    vim.bo[buf].filetype = "markdown"
+    plugin.state.paused_buffers[buf] = true
+    plugin.state.auto_buffers[buf] = false
+    plugin.state.buffer_modes[buf] = "inline"
+    plugin.state.inline_viewports[buf] = true
+    plugin.state.wide_viewports[buf] = { start_column = 3 }
+
+    plugin.setup({ auto_preview = false, preview_mode = "reader" })
+    h.assert_true("setup preserves an explicit pause", plugin.state.paused_buffers[buf])
+    h.assert_false("setup preserves an auto-preview override", plugin.state.auto_buffers[buf])
+    h.assert_eq("setup preserves the selected view mode", plugin.state.buffer_modes[buf], "inline")
+    h.assert_true("setup preserves the inline viewport policy", plugin.state.inline_viewports[buf])
+    h.assert_eq("setup preserves the wide viewport", plugin.state.wide_viewports[buf].start_column, 3)
+
+    plugin.setup({ auto_preview = false, preview_mode = "reader", reset_state = true })
+    for _, field in ipairs({
+      "paused_buffers",
+      "auto_buffers",
+      "buffer_modes",
+      "inline_viewports",
+      "wide_viewports",
+    }) do
+      h.assert_eq("reset_state clears " .. field, plugin.state[field][buf], nil)
+    end
+  end)
+end)
+
 h.test("reader auto-open requires a table but explicit Reader still opens", function()
   local plugin = require("markdown-table-wrap")
   local reader = require("markdown-table-wrap.reader")
@@ -489,14 +545,14 @@ h.test("Reader refresh failure rolls back projection text and metadata", functio
     local original_tick = reader.get_state(reader_bufnr).source_changedtick
     vim.api.nvim_buf_set_lines(source_bufnr, 2, 3, false, { "| updated | changed |" })
 
-    local original_apply = theme.apply
+    local original_ensure = theme.ensure
     local original_notify = vim.notify
-    theme.apply = function()
+    theme.ensure = function()
       error("forced Reader highlight failure")
     end
     vim.notify = function() end
     local called, refreshed = pcall(reader.refresh, reader_bufnr)
-    theme.apply = original_apply
+    theme.ensure = original_ensure
     vim.notify = original_notify
 
     h.assert_true("Reader refresh failure is contained", called)

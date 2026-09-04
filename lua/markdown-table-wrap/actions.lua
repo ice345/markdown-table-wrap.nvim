@@ -21,7 +21,7 @@ local function leave_view(context)
 
   if context.mode == "float" then
     local source_winid = context.float and context.float.source_winid or nil
-    require("markdown-table-wrap").close_preview()
+    require("markdown-table-wrap").close_preview({ restore_origin = false })
     if source_winid and vim.api.nvim_win_is_valid(source_winid) then
       vim.api.nvim_set_current_win(source_winid)
     end
@@ -68,11 +68,12 @@ actions.refresh = function(context)
   elseif context.mode == "float" then
     local plugin = require("markdown-table-wrap")
     local was_paused = plugin.state.paused_buffers[context.source_bufnr]
+    local origin = plugin.state.float_origin and vim.deepcopy(plugin.state.float_origin) or nil
     if not leave_view(context) then
       return false
     end
     plugin.state.paused_buffers[context.source_bufnr] = was_paused
-    return plugin.float_preview() ~= false
+    return plugin.float_preview({ origin = origin }) ~= false
   end
   require("markdown-table-wrap").refresh_auto({ bufnr = context.source_bufnr, force = true })
   return true

@@ -28,8 +28,14 @@ function M.format(context)
   local config = context.config or {}
   local table_text = "none"
   if context.table then
-    table_text =
-      string.format("%d-%d (%d columns)", context.table.start_lnum, context.table.end_lnum, context.table.columns)
+    local excess = tonumber(context.table.excess_cells) or 0
+    table_text = string.format(
+      "%d-%d (%d columns%s)",
+      context.table.start_lnum,
+      context.table.end_lnum,
+      context.table.columns,
+      excess > 0 and string.format(", %d excess cell%s", excess, excess == 1 and "" or "s") or ""
+    )
   end
   local cell_text = context.cell and string.format("column %d: %s", context.cell.index, context.cell.text) or "none"
   local window_width = context.window.width or vim.o.columns
@@ -95,9 +101,6 @@ end
 
 local function help_lines(context)
   local mappings = (context.config.mappings or {})[context.mode] or {}
-  if context.mode == "source" or context.mode == "inline" then
-    mappings = (context.config.mappings or {}).reader or {}
-  end
   if mappings == false then
     mappings = { enabled = false }
   end
@@ -118,7 +121,9 @@ local function help_lines(context)
     "Configured view keys",
   }
 
-  if mappings.enabled == false then
+  if context.mode == "source" or context.mode == "inline" then
+    table.insert(lines, "  local mappings: none (commands and <Plug> actions are available)")
+  elseif mappings.enabled == false then
     table.insert(lines, "  local mappings: disabled (commands and <Plug> actions remain available)")
   else
     table.insert(lines, "  edit Source: " .. mapping_text(mappings.edit))
@@ -128,6 +133,18 @@ local function help_lines(context)
     if context.mode == "reader" then
       table.insert(lines, "  copy cell:   " .. mapping_text(mappings.copy_cell))
       table.insert(lines, "  copy table:  " .. mapping_text(mappings.copy_table))
+      local cell = mappings.cell
+      if cell == false or (type(cell) == "table" and cell.enabled == false) then
+        table.insert(lines, "  cell keys:   disabled")
+      elseif type(cell) == "table" then
+        table.insert(lines, "  yank cell:   " .. mapping_text(cell.yank))
+        table.insert(lines, "  select cell: " .. mapping_text(cell.visual))
+        table.insert(lines, "  delete cell: " .. mapping_text(cell.delete))
+        table.insert(lines, "  change cell: " .. mapping_text(cell.change))
+        table.insert(lines, "  put cell:    " .. mapping_text(cell.put))
+        table.insert(lines, "  Source c:    " .. mapping_text(cell.change_operator))
+        table.insert(lines, "  repeat cell: " .. mapping_text(cell.repeat_change))
+      end
     end
   end
   table.insert(lines, "")
@@ -147,6 +164,7 @@ function M.open_help(context)
   local height = math.min(#lines, math.max(5, vim.o.lines - vim.o.cmdheight - 4))
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.b[buf].markdown_table_wrap_auxiliary = true
   vim.bo[buf].buftype = "nofile"
   vim.bo[buf].bufhidden = "wipe"
   vim.bo[buf].swapfile = false

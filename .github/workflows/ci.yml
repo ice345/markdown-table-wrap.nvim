@@ -16,6 +16,11 @@ jobs:
         neovim: [v0.10.4, stable]
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Check whitespace errors
+        run: git diff --check HEAD^ HEAD
 
       - name: Check Lua formatting
         uses: JohnnyMorganz/stylua-action@v4

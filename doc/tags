@@ -60,10 +60,12 @@ markdown-table-wrap-inline-disable-wrap	markdown-table-wrap.txt	/*markdown-table
 markdown-table-wrap-inline-viewport-scrolling	markdown-table-wrap.txt	/*markdown-table-wrap-inline-viewport-scrolling*
 markdown-table-wrap-installation	markdown-table-wrap.txt	/*markdown-table-wrap-installation*
 markdown-table-wrap-limitations	markdown-table-wrap.txt	/*markdown-table-wrap-limitations*
+markdown-table-wrap-link	markdown-table-wrap.txt	/*markdown-table-wrap-link*
 markdown-table-wrap-map-gx	markdown-table-wrap.txt	/*markdown-table-wrap-map-gx*
 markdown-table-wrap-mappings	markdown-table-wrap.txt	/*markdown-table-wrap-mappings*
 markdown-table-wrap-overview	markdown-table-wrap.txt	/*markdown-table-wrap-overview*
 markdown-table-wrap-render-markdown	markdown-table-wrap.txt	/*markdown-table-wrap-render-markdown*
+markdown-table-wrap-reset-state	markdown-table-wrap.txt	/*markdown-table-wrap-reset-state*
 markdown-table-wrap-theme-dir	markdown-table-wrap.txt	/*markdown-table-wrap-theme-dir*
 markdown-table-wrap-themes	markdown-table-wrap.txt	/*markdown-table-wrap-themes*
 markdown-table-wrap-vic	markdown-table-wrap.txt	/*markdown-table-wrap-vic*

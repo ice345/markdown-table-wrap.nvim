@@ -38,15 +38,16 @@ return {
     },
     {
       id = "container-prefix-blockquote",
-      classification = "unsupported",
+      classification = "supported",
       lines = { "> | abc | def |", "> | --- | --- |", "> | bar | baz |" },
-      reason = "container prefixes remain visible until their source spans are unambiguous",
+      columns = 2,
+      rows = 1,
     },
     {
       id = "container-prefix-list",
       classification = "unsupported",
       lines = { "- | abc | def |", "  | --- | --- |", "  | bar | baz |" },
-      reason = "list container prefixes remain visible until Source ranges are lossless",
+      reason = "list continuation and indentation rules do not yet provide lossless Source spans",
     },
     {
       id = "fenced-table-shaped-text",

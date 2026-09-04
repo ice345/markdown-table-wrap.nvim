@@ -36,7 +36,7 @@ end
 
 local function build(source_bufnr, config)
   local source_lines = vim.api.nvim_buf_get_lines(source_bufnr, 0, -1, false)
-  local tables = parser.parse_all(source_bufnr)
+  local tables = parser.parse_all_ref(source_bufnr)
   local output = {}
   local line_objects = {}
   local reader_to_source = {}
@@ -71,12 +71,11 @@ local function build(source_bufnr, config)
   while source_lnum <= #source_lines do
     local table_info = tables[table_index]
     if table_info and table_info.start_lnum == source_lnum then
-      local rendered = render.render_table(table_info, config)
+      local rendered = render.render_table_ref(table_info, config)
       local reader_start = #output + 1
 
       for index, text in ipairs(rendered.lines) do
         local line_object = rendered.line_objects[index]
-        line_object.table_id = table_info.id
         append(text, rendered.source_lnums[index] or table_info.start_lnum, line_object, true)
       end
 
@@ -136,7 +135,7 @@ local function adjust_viewport_for_cursor(source_bufnr, config, source_lnum, sou
 end
 
 local function apply_table_highlights(reader_bufnr, built, config)
-  require("markdown-table-wrap.theme").apply(config)
+  require("markdown-table-wrap.theme").ensure(config)
   vim.api.nvim_buf_clear_namespace(reader_bufnr, namespace, 0, -1)
   local overlay_priority = math.max(config.overlay_priority or 10000, 10000)
   for _, segment in ipairs(built.segments) do

@@ -1,6 +1,6 @@
 # Performance Reference
 
-v0.5 retains the v0.4 separation of table discovery, parsing/inline tokens, and
+v0.7 retains the separation of table discovery, parsing/inline tokens, and
 layout caches. The explicit Source editing companion does not run during
 rendering and therefore does not change the read-only rendering cost model. A
 Source buffer changedtick invalidates discovery and parse results; the layout
@@ -34,6 +34,39 @@ budget by more than 25% on the same machine. Correctness tests still take
 priority over timing: no cache may reuse results across changedticks, window
 width signatures, or relevant layout configuration changes.
 
+Use the opt-in hot-path profile to measure configuration copies, theme
+application, public isolated cache hits versus internal read-only references,
+cached rendering, and lifecycle-event dispatch:
+
+```sh
+MARKDOWN_TABLE_WRAP_BENCH_HOT=1 \
+  nvim --headless -u NONE --cmd "set shadafile=NONE" --cmd "set noswapfile" \
+  -c "set rtp+=." \
+  -c "luafile tests/benchmark.lua" \
+  -c "qa!"
+```
+
+On the Apple Silicon Neovim 0.12.4 development host used for the v0.6.0
+reference, the 2026-09-03 optimization pass produced these representative
+same-host comparisons:
+
+| Operation | v0.6.0 baseline | Read-only-cache pass |
+| --- | ---: | ---: |
+| 1,000 unchanged theme checks | 14.76 ms | 0.68 ms |
+| 1,000 `WinScrolled` events | 2.34 ms / 1,000 refreshes | 0.10 ms / 0 refreshes |
+| 1,000 `ModeChanged` events | 6.31 ms | 2.23 ms |
+| 500 public isolated cache hits | 313.27 ms | 306.59 ms |
+| 500 internal read-only cache hits | not available | 0.03 ms |
+| 500 internal rendered-layout hits | not available | 2.05 ms |
+| Full unchanged Reader refresh | 308.40 ms | 241.74 ms |
+| GC-paused cold-open Lua allocation growth | 1,188.78 MiB | 1,096.37 MiB |
+| GC-paused refresh Lua allocation growth | 154.71 MiB | 61.78 MiB |
+
+The public cache result intentionally remains a deep copy. Cold Reader opening
+with normal garbage collection remains about 1.4 seconds on this fixture, so
+the pass does not claim to solve first-build latency; its measured win is
+repeat derivation, event churn, and transient Lua allocation.
+
 ## Large Reader Stress
 
 The default benchmark measures parser/model work. A full Reader has a different
@@ -50,9 +83,11 @@ MARKDOWN_TABLE_WRAP_BENCH_READER=1 \
 
 At 110 columns, the fixture contains 4,002 Source lines and currently expands
 to about 20,005 Reader lines. The Reader installs one authoritative
-conceal/overlay extmark per rendered table line. On one Apple Silicon
-development machine with Neovim 0.12.4, a representative run after that extmark
-consolidation measured approximately:
+conceal/overlay extmark per rendered table line. The stress profile also
+reports Lua heap growth with garbage collection paused, retained heap after a
+full collection, and time spent directly inside theme/extmark APIs. On one
+Apple Silicon development machine with Neovim 0.12.4, a representative run
+after that extmark consolidation measured approximately:
 
 | Operation | Reference result |
 | --- | ---: |

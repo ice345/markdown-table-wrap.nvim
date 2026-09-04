@@ -31,6 +31,15 @@ h.test("parser keeps pipes inside multi-backtick code spans", function()
   end)
 end)
 
+h.test("shared UTF-8 scanner does not skip structural pipes after invalid bytes", function()
+  local parser = require("markdown-table-wrap.parser")
+  local invalid = string.char(0xFF)
+  local tables = parser.parse_lines({ invalid .. " A | B", "--- | ---", "one | two" })
+  h.assert_eq("invalid byte table still parses", #tables, 1)
+  h.assert_eq("pipe after invalid byte still separates columns", #tables[1].header, 2)
+  h.assert_eq("second cell remains intact", tables[1].rows[1][2].text, "two")
+end)
+
 h.test("parser supports optional outer pipes and alignment", function()
   local parser = require("markdown-table-wrap.parser")
 
@@ -214,7 +223,7 @@ h.test("parser stops tables at new block-level structures", function()
   end
 end)
 
-h.test("parser rejects table syntax nested in block-level prefixes", function()
+h.test("parser supports blockquote tables and rejects list-contained tables", function()
   local parser = require("markdown-table-wrap.parser")
 
   h.with_buffer({
@@ -226,7 +235,104 @@ h.test("parser rejects table syntax nested in block-level prefixes", function()
     "  --- | ---",
   }, function(buf)
     local tables = parser.parse_all(buf)
-    h.assert_eq("nested block syntax not treated as top-level tables", #tables, 0)
+    h.assert_eq("blockquote table parses once", #tables, 1)
+    h.assert_eq("blockquote container kind", tables[1].container.kind, "blockquote")
+    h.assert_eq("blockquote container depth", tables[1].container.depth, 1)
+    h.assert_eq("list-contained table stays unsupported", tables[1].end_lnum, 3)
+    h.assert_false("list header is not parsed", parser.parse_at_cursor(buf, 5))
+  end)
+end)
+
+h.test("blockquote table spans map cells and inline tokens to Source bytes", function()
+  local parser = require("markdown-table-wrap.parser")
+
+  h.with_buffer({
+    " > | 名称 | Link |",
+    ">  | --- | --- |",
+    "  > | 值 | [site](https://example.com) |",
+  }, function(buf)
+    local parsed = parser.parse_at_cursor(buf, 3)
+    h.assert_true("spaced blockquote table parsed", parsed ~= nil)
+    h.assert_eq("first header Source slice", parsed.header[1].source_span.start_col, 5)
+    h.assert_eq("body link Source start", parsed.rows[1][2].source_span.start_col, 12)
+    local line = vim.api.nvim_buf_get_lines(buf, 2, 3, false)[1]
+    local span = parsed.rows[1][2].source_span
+    h.assert_eq("body Source slice is exact", line:sub(span.start_col + 1, span.end_col), "[site](https://example.com)")
+    h.assert_eq("link token uses physical Source column", parsed.rows[1][2].tokens[1].source_start_col, 12)
+  end)
+end)
+
+h.test("parser supports nested blockquotes and pipe-free quoted body rows", function()
+  local parser = require("markdown-table-wrap.parser")
+
+  h.with_buffer({
+    "> > | A | B |",
+    ">> | --- | --- |",
+    "> > one",
+    "> outside | depth",
+  }, function(buf)
+    local parsed = parser.parse_at_cursor(buf, 3)
+    h.assert_true("nested blockquote parsed", parsed ~= nil)
+    h.assert_eq("nested quote depth", parsed.container.depth, 2)
+    h.assert_eq("pipe-free row value", parsed.rows[1][1].text, "one")
+    h.assert_eq("pipe-free row missing cell", parsed.rows[1][2].text, "")
+    h.assert_eq("quote depth change ends table", parsed.end_lnum, 3)
+  end)
+end)
+
+h.test("parser ignores quoted table-shaped text inside quoted fences", function()
+  local parser = require("markdown-table-wrap.parser")
+
+  h.with_buffer({
+    "> ```markdown",
+    "> | Code | Table |",
+    "> | --- | --- |",
+    "> | one | two |",
+    "> ```",
+    "> | Real | Table |",
+    "> | --- | --- |",
+    "> | yes | rendered |",
+  }, function(buf)
+    h.assert_false("quoted fenced table is ignored", parser.parse_at_cursor(buf, 3))
+    local tables = parser.parse_all(buf)
+    h.assert_eq("one quoted table remains", #tables, 1)
+    h.assert_eq("quoted table starts after fence", tables[1].start_lnum, 6)
+  end)
+end)
+
+h.test("top-level fences keep quote-shaped code inside the same fence", function()
+  local parser = require("markdown-table-wrap.parser")
+
+  h.with_buffer({
+    "```markdown",
+    "> | Code | Table |",
+    "> | --- | --- |",
+    "> | one | two |",
+    "```",
+    "| Real | Table |",
+    "| --- | --- |",
+    "| yes | rendered |",
+  }, function(buf)
+    h.assert_false("quote-shaped fenced content is ignored", parser.parse_at_cursor(buf, 3))
+    local tables = parser.parse_all(buf)
+    h.assert_eq("only post-fence table remains", #tables, 1)
+    h.assert_eq("post-fence table starts after closer", tables[1].start_lnum, 6)
+  end)
+end)
+
+h.test("blockquote tables resolve blockquote reference definitions", function()
+  local parser = require("markdown-table-wrap.parser")
+
+  h.with_buffer({
+    "> | A | B |",
+    "> | --- | --- |",
+    "> | [site][ref] | two |",
+    ">",
+    "> [ref]: https://example.com",
+  }, function(buf)
+    local parsed = parser.parse_at_cursor(buf, 3)
+    h.assert_true("quoted reference table parsed", parsed ~= nil)
+    h.assert_eq("quoted reference target resolved", parsed.rows[1][1].tokens[1].target, "https://example.com")
   end)
 end)
 

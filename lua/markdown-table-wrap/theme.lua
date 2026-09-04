@@ -78,6 +78,7 @@ local groups = {
   image = "MarkdownTableWrapImage",
   blank = "MarkdownTableWrapBlank",
 }
+local applied_signature = nil
 
 -- A linked highlight can carry a background from the user's colorscheme. That
 -- is useful for standalone UI elements, but it turns every virtual-text cell
@@ -167,7 +168,18 @@ local function load_theme_file(config, preset_name)
   return nil
 end
 
-function M.apply(config)
+local function signature(config)
+  config = config or {}
+  return table.concat({
+    tostring(vim.g.colors_name or ""),
+    tostring(config.highlight_preset),
+    tostring(config.theme_dir),
+    vim.inspect(config.themes or {}),
+    vim.inspect(config.highlights or {}),
+  }, "\31")
+end
+
+local function apply(config)
   config = config or {}
   local preset_name = config.highlight_preset or "tokyonight"
   if preset_name == "auto" then
@@ -190,6 +202,22 @@ function M.apply(config)
     spec = normalize_spec(spec)
     vim.api.nvim_set_hl(0, group, transparent_spec(spec, key))
   end
+end
+
+function M.apply(config)
+  apply(config)
+  applied_signature = signature(config)
+  return true
+end
+
+function M.ensure(config)
+  local next_signature = signature(config)
+  if applied_signature == next_signature then
+    return false
+  end
+  apply(config)
+  applied_signature = next_signature
+  return true
 end
 
 function M.groups()

@@ -554,6 +554,24 @@ h.test("reader reports a useful save error for unnamed source buffers", function
   end)
 end)
 
+h.test("Reader visibly reports excess Source cells", function()
+  local plugin = require("markdown-table-wrap")
+  plugin.setup({ auto_preview = false, preview_mode = "reader" })
+
+  h.with_buffer({
+    "| A | B |",
+    "| --- | --- |",
+    "| one | two | excess |",
+  }, function(source_bufnr)
+    vim.bo[source_bufnr].filetype = "markdown"
+    local reader_bufnr = plugin.reader_preview()
+    local text = table.concat(vim.api.nvim_buf_get_lines(reader_bufnr, 0, -1, false), "\n")
+    h.assert_true("Reader includes the excess-cell warning", text:find("+1 excess Source cell", 1, true) ~= nil)
+    plugin.close_reader()
+    plugin.state.paused_buffers[source_bufnr] = nil
+  end)
+end)
+
 h.test("reader safely hides an unsaved source when hidden is disabled", function()
   local plugin = require("markdown-table-wrap")
 

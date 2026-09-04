@@ -25,12 +25,39 @@ h.test("link targets classify URLs files anchors wiki links and images", functio
   h.assert_eq("wiki anchor extension", wiki_anchor.path, "/tmp/course/notes.md")
   h.assert_eq("wiki anchor is retained", wiki_anchor.anchor, "topic")
   h.assert_eq("image target", links.classify("image.png", { source_path = source, kind = "image" }).kind, "image")
+  h.assert_eq(
+    "local file URI",
+    links.classify("file:///tmp/space%20name.md", { source_path = source }).path,
+    "/tmp/space name.md"
+  )
+  h.assert_eq(
+    "remote file URI host is refused",
+    links.classify("file://example.com/file.md", { source_path = source }).kind,
+    "unresolved"
+  )
   h.assert_eq("unnamed Source is unresolved", links.classify("relative.md", {}).kind, "unresolved")
   h.assert_eq(
     "bare URL is extracted",
     links.extract("visit https://example.com/docs.", source)[1].raw,
     "https://example.com/docs"
   )
+end)
+
+h.test("external link opening enforces the configured scheme allowlist", function()
+  local links = require("markdown-table-wrap.links")
+  local original_open = vim.ui.open
+  local opened
+  vim.ui.open = function(target)
+    opened = target
+  end
+  local target = links.classify("obsidian://vault/note", {})
+  local context = { config = { link = { allowed_schemes = { "http", "https" } } } }
+  h.assert_false("unknown scheme is refused", links.open_target(target, context, { silent = true }))
+  h.assert_eq("refused scheme is not delegated to the OS", opened, nil)
+  context.config.link.allowed_schemes = { "obsidian" }
+  h.assert_true("explicitly allowed custom scheme opens", links.open_target(target, context, { silent = true }))
+  h.assert_eq("allowed custom scheme reaches vim.ui.open", opened, "obsidian://vault/note")
+  vim.ui.open = original_open
 end)
 
 h.test("absolute files line targets and file anchors open at the requested location", function()

@@ -49,6 +49,62 @@ h.test("render emits styled chunks", function()
   end)
 end)
 
+h.test("render keeps blockquote context and offsets rendered cells", function()
+  local parser = require("markdown-table-wrap.parser")
+  local render = require("markdown-table-wrap.render")
+
+  h.with_buffer({ "> | A | B |", "> | --- | --- |", "> | one | two |" }, function(buf)
+    local rendered = render.render_table(parser.parse_at_cursor(buf, 3), {
+      max_width_ratio = 1,
+      min_col_width = 4,
+      max_col_width = 20,
+      fit_to_window = true,
+      use_unicode_border = true,
+      table_border = "rounded",
+      row_separator = false,
+    })
+    for _, line in ipairs(rendered.lines) do
+      h.assert_true("every rendered line keeps quote prefix", vim.startswith(line, "> "))
+    end
+    local header_cell = rendered.line_objects[2].cells[1]
+    h.assert_true("rendered cell begins after quote prefix", header_cell.start_col >= 3)
+    h.assert_eq("quote prefix uses Comment highlight", rendered.line_objects[1].chunks[1].hl_group, "Comment")
+    h.assert_eq("render width includes quote prefix", vim.api.nvim_strwidth(rendered.lines[1]), rendered.width)
+  end)
+end)
+
+h.test("render exposes excess Source cells instead of hiding the condition", function()
+  local parser = require("markdown-table-wrap.parser")
+  local render = require("markdown-table-wrap.render")
+
+  h.with_buffer({
+    "| A | B |",
+    "| --- | --- |",
+    "| one | two | hidden |",
+  }, function(buf)
+    local parsed = parser.parse_at_cursor(buf, 3)
+    local rendered = render.render_table(parsed, {
+      max_width_ratio = 1,
+      min_col_width = 4,
+      max_col_width = 20,
+      fit_to_window = true,
+      use_unicode_border = true,
+      table_border = "rounded",
+      row_separator = false,
+    })
+    h.assert_eq("rendered model reports one excess cell", rendered.excess_cells, 1)
+    h.assert_true(
+      "rendered output includes an excess-cell warning",
+      rendered.lines[#rendered.lines]:find("+1 excess Source cell", 1, true) ~= nil
+    )
+    h.assert_eq(
+      "excess warning uses diagnostic highlighting",
+      rendered.line_objects[#rendered.lines].chunks[1].hl_group,
+      "DiagnosticWarn"
+    )
+  end)
+end)
+
 h.test("render keeps borders aligned for code-wrapped link labels", function()
   local parser = require("markdown-table-wrap.parser")
   local render = require("markdown-table-wrap.render")

@@ -22,6 +22,134 @@ h.test("configuration resolution returns isolated normalized copies", function()
   h.assert_eq("partial cell mappings retain overrides", resolved.mappings.reader.cell.put, "gpc")
   h.assert_eq("resolution does not mutate caller options", opts.reader.conceallevel, 9)
   h.assert_eq("resolution does not add defaults to caller options", opts.mappings.reader.cell.yank, nil)
+  h.assert_deep_eq(
+    "default external schemes are conservative",
+    resolved.link.allowed_schemes,
+    { "http", "https", "mailto" }
+  )
+end)
+
+h.test("filetypes and unknown option diagnostics have one configuration owner", function()
+  local config = require("markdown-table-wrap.config")
+  h.assert_deep_eq(
+    "filetypes are unique and include extensions",
+    config.filetypes({ "markdown", "text", "text" }),
+    { "markdown", "md", "quarto", "rmd", "rmarkdown", "text" }
+  )
+  h.assert_deep_eq(
+    "unknown fixed options are reported but dynamic theme keys are accepted",
+    config.unknown_options({ typo = true, reader = { typo = true }, themes = { custom = { border = {} } } }),
+    { "reader.typo", "typo" }
+  )
+
+  local plugin = require("markdown-table-wrap")
+  local original_notify = vim.notify
+  local messages = {}
+  vim.notify = function(message)
+    table.insert(messages, message)
+  end
+  plugin.setup({ auto_preview = false, reader = { typo = true } })
+  vim.notify = original_notify
+  h.assert_true(
+    "setup warns once about unknown options",
+    table.concat(messages, "\n"):find("reader.typo", 1, true) ~= nil
+  )
+end)
+
+h.test("automatic preview ignores plugin auxiliary buffers", function()
+  local plugin = require("markdown-table-wrap")
+  plugin.setup({ auto_preview = true })
+  local original_schedule = plugin.schedule_refresh
+  local scheduled = 0
+  plugin.schedule_refresh = function()
+    scheduled = scheduled + 1
+  end
+
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].buftype = "nofile"
+  vim.bo[buf].filetype = "markdown"
+  vim.b[buf].markdown_table_wrap_auxiliary = true
+  vim.api.nvim_exec_autocmds("BufWinEnter", { buffer = buf, modeline = false })
+  h.assert_eq("auxiliary Markdown is not scheduled automatically", scheduled, 0)
+  vim.api.nvim_buf_delete(buf, { force = true })
+  plugin.schedule_refresh = original_schedule
+end)
+
+h.test("buffer configuration copies stay isolated over an internal cache hit", function()
+  local plugin = require("markdown-table-wrap")
+  plugin.setup({ auto_preview = false, reader = { wrap = true } })
+
+  h.with_buffer({ "ordinary Markdown prose" }, function(buf)
+    vim.bo[buf].filetype = "markdown"
+    local first = plugin.get_buffer_config(buf)
+    first.reader.wrap = false
+    first.wide_table.viewport.start_column = 99
+
+    local second = plugin.get_buffer_config(buf)
+    h.assert_true("Reader config is isolated", second.reader.wrap)
+    h.assert_eq("wide viewport config is isolated", second.wide_table.viewport.start_column, 1)
+  end)
+end)
+
+h.test("layout signatures are stable and include every rendered field", function()
+  local config = require("markdown-table-wrap.config")
+  local left = {
+    mode = "viewport",
+    allocate_extra = true,
+    viewport = { start_column = 2, column_count = 3, marker = "…" },
+    columns = {
+      [2] = { width = 12, priority = 1 },
+      [1] = { min = 4, max = 10, weight = 2 },
+    },
+  }
+  local right = {
+    columns = {
+      [1] = { weight = 2, max = 10, min = 4 },
+      [2] = { priority = 1, width = 12 },
+    },
+    viewport = { marker = "…", column_count = 3, start_column = 2 },
+    allocate_extra = true,
+    mode = "viewport",
+  }
+  h.assert_eq(
+    "wide-table signature ignores insertion order",
+    config.wide_table_signature(left),
+    config.wide_table_signature(right)
+  )
+  right.columns[2].width = 13
+  h.assert_true(
+    "wide-table signature changes with a rendered width",
+    config.wide_table_signature(left) ~= config.wide_table_signature(right)
+  )
+
+  local first_links = {
+    icon = "L ",
+    image = "I ",
+    wiki = { icon = "W " },
+    custom = {
+      beta = { pattern = "beta", icon = "B " },
+      alpha = { pattern = "alpha", icon = "A " },
+    },
+  }
+  local second_links = {
+    custom = {
+      alpha = { icon = "A ", pattern = "alpha" },
+      beta = { icon = "B ", pattern = "beta" },
+    },
+    wiki = { icon = "W " },
+    image = "I ",
+    icon = "L ",
+  }
+  h.assert_eq(
+    "link signature ignores insertion order",
+    config.link_layout_signature(first_links),
+    config.link_layout_signature(second_links)
+  )
+  second_links.custom.alpha.icon = "changed"
+  h.assert_true(
+    "link signature changes with a rendered icon",
+    config.link_layout_signature(first_links) ~= config.link_layout_signature(second_links)
+  )
 end)
 
 h.test("setup normalizes invalid configuration without breaking rendering", function()

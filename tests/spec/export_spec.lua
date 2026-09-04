@@ -161,6 +161,52 @@ h.test("bang export includes every table while default export stays contextual",
   end)
 end)
 
+h.test("structured export refuses excess cells instead of dropping data", function()
+  local plugin = require("markdown-table-wrap")
+  plugin.setup({ auto_preview = false })
+
+  h.with_buffer({
+    "| A | B |",
+    "| --- | --- |",
+    "| one | two | excess |",
+  }, function(buf)
+    vim.bo[buf].filetype = "markdown"
+    vim.api.nvim_win_set_cursor(0, { 3, 2 })
+    vim.fn.setreg('"', "sentinel", "v")
+    h.assert_false(
+      "overflow export is rejected",
+      plugin.export_table({ format = "tsv", clipboard = false, silent = true })
+    )
+    h.assert_eq("overflow refusal preserves registers", vim.fn.getreg('"'), "sentinel")
+  end)
+end)
+
+h.test("copy follows the clipboard option instead of always writing unnamedplus", function()
+  local plugin = require("markdown-table-wrap")
+  plugin.setup({ auto_preview = false })
+  local original_clipboard = vim.o.clipboard
+
+  local ok, err = pcall(function()
+    h.with_buffer(table_lines(), function(buf)
+      vim.bo[buf].filetype = "markdown"
+      vim.api.nvim_win_set_cursor(0, { 3, 2 })
+      vim.o.clipboard = ""
+      vim.fn.setreg("+", "plus sentinel", "v")
+      local copied = plugin.export_table({ format = "tsv", silent = true })
+      h.assert_true("export without clipboard integration succeeds", copied)
+      h.assert_eq("empty clipboard option leaves unnamedplus alone", vim.fn.getreg("+"), "plus sentinel")
+
+      vim.o.clipboard = "unnamedplus"
+      local _, csv = plugin.export_table({ format = "csv", silent = true })
+      h.assert_eq("unnamedplus receives the exported value", vim.fn.getreg("+"), csv)
+    end)
+  end)
+  vim.o.clipboard = original_clipboard
+  if not ok then
+    error(err, 0)
+  end
+end)
+
 h.test("export actions are exposed as Plug mappings and commands", function()
   local plugin = require("markdown-table-wrap")
   plugin.setup({ auto_preview = false })

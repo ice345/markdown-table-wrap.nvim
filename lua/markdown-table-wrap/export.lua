@@ -97,12 +97,31 @@ local function reader_cell_text(context)
   return table.concat(values, "\n"), cell
 end
 
+local function clipboard_register(opts)
+  opts = opts or {}
+  if opts.clipboard == false then
+    return nil
+  elseif opts.clipboard == "+" or opts.clipboard == "*" then
+    return opts.clipboard
+  elseif opts.clipboard == true then
+    return "+"
+  end
+  local clipboard = "," .. tostring(vim.o.clipboard or "") .. ","
+  if clipboard:find(",unnamedplus,", 1, true) then
+    return "+"
+  elseif clipboard:find(",unnamed,", 1, true) then
+    return "*"
+  end
+  return nil
+end
+
 local function set_register(value, opts)
   opts = opts or {}
   vim.fn.setreg('"', value, "v")
   vim.fn.setreg("0", value, "v")
-  if opts.clipboard ~= false then
-    pcall(vim.fn.setreg, "+", value, "v")
+  local system_register = clipboard_register(opts)
+  if system_register then
+    pcall(vim.fn.setreg, system_register, value, "v")
   end
 end
 
@@ -172,6 +191,14 @@ local function rows_for(table_info)
   return rows
 end
 
+local function excess_cell_count(table_info)
+  local count = 0
+  for _, row in ipairs(table_info.rows or {}) do
+    count = count + #(row.overflow_cells or {})
+  end
+  return count
+end
+
 local function export_value(value, format)
   value = tostring(value or "")
   if format == "csv" then
@@ -204,6 +231,19 @@ function M.export(opts)
 
   local table_outputs = {}
   for _, table_info in ipairs(tables) do
+    local excess = excess_cell_count(table_info)
+    if excess > 0 then
+      notify(
+        string.format(
+          "export was refused because the selected table contains %d excess cell%s beyond its header",
+          excess,
+          excess == 1 and "" or "s"
+        ),
+        vim.log.levels.ERROR,
+        opts
+      )
+      return false
+    end
     local row_outputs = {}
     for _, row in ipairs(rows_for(table_info)) do
       local values = {}

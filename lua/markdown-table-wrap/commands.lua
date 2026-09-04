@@ -103,20 +103,26 @@ local function register_state_commands(plugin)
   end, { desc = "Toggle automatic Markdown table preview in the current buffer", force = true })
 
   vim.api.nvim_create_user_command("MarkdownTableStatus", function()
-    local bufnr = vim.api.nvim_get_current_buf()
-    local reader = require("markdown-table-wrap.reader")
-    local reader_active = reader.is_reader(bufnr)
-    local active = require("markdown-table-wrap.inline").is_active(bufnr)
-    local source_bufnr = reader_active and reader.source_bufnr(bufnr) or bufnr
+    local context = select(1, require("markdown-table-wrap.context").resolve())
+    if not context then
+      vim.notify("MarkdownTableWrap: no active Markdown Source context.", vim.log.levels.INFO)
+      return
+    end
+    local source_bufnr = context.source_bufnr
+    local reader_active = context.mode == "reader"
+    local float_active = context.mode == "float"
+    local active = require("markdown-table-wrap.inline").is_active(source_bufnr)
     local paused = plugin.state.paused_buffers[source_bufnr] == true
     local config = plugin.get_buffer_config(source_bufnr)
     vim.notify(
       string.format(
-        "MarkdownTableWrap: auto=%s paused=%s active=%s reader=%s mode=%s/%s wrap=%s",
+        "MarkdownTableWrap: auto=%s paused=%s active=%s reader=%s float=%s view=%s mode=%s/%s wrap=%s",
         tostring(config.auto_preview),
         tostring(paused),
         tostring(active),
         tostring(reader_active),
+        tostring(float_active),
+        context.mode,
         config.preview_mode,
         config.inline_mode .. (config.inline_viewport_scrolling and "/viewport" or "/full"),
         config.inline_wrap_scope
@@ -127,7 +133,7 @@ local function register_state_commands(plugin)
 
   vim.api.nvim_create_user_command("MarkdownTableToggleInlineViewport", function()
     plugin.toggle_inline_viewport_scrolling()
-  end, { desc = "Toggle inline viewport scrolling for long rendered tables", force = true })
+  end, { desc = "Toggle Source-owned inline viewport scrolling for long rendered tables", force = true })
 end
 
 local function register_navigation_commands(plugin)
