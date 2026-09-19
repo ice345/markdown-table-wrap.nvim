@@ -36,6 +36,7 @@ local specs = {
   "tests.spec.reader_ergonomics_spec",
   "tests.spec.table_edit_spec",
   "tests.spec.generated_spec",
+  "tests.spec.diff_mode_spec",
 }
 
 for _, spec in ipairs(specs) do

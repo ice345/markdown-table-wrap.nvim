@@ -269,8 +269,8 @@ There are several intentionally separate state layers:
   Source/override tuple; the public `get_buffer_config()` boundary still
   returns an isolated deep copy. Viewport cursor adjustment uses copy-on-write.
 - `M.state`: high-level Float ownership and its originating-view snapshot plus
-  per-Source mode, auto-preview, pause, viewport, refresh token, signature, and
-  mapping overrides.
+  per-Source mode, auto-preview, pause, viewport, refresh token, signature,
+  mapping overrides, and per-window `'diff'` suspend records.
 - `reader.lua`: Reader-buffer states, shared Source ownership, and temporary
   per-Source/per-window viewport snapshots. One Source may have multiple
   width-specific Reader windows; each state records the Source
@@ -305,6 +305,19 @@ Source cursor, horizontal, vertical-scroll, or text change invalidates that
 snapshot. Buffer-navigation actions use the same temporary-leave contract;
 explicit close/edit still clears the snapshot and pauses Source. Inline saves
 and restores its native window view around detach/attach and option changes.
+
+Window-local `'diff'` is a third leave class, not pause and not `abandon()`.
+`DiffUpdated` and `SafeState` sample each window's `'diff'` flag. A rising edge in a
+Reader window calls `reader.close({ preserve_view = true })` without setting
+`paused`, re-applies `:diffthis` after the buffer swap, and records the
+window on `init.state.window_suspend`. A falling edge restores from that
+record (manual Reader included). Automatic restoration uses the normal policy
+checks but explicitly opens that window's Reader instead of refreshing a sibling
+Reader or entering Source-scoped debounce. `SafeState` covers single-window and
+identical-content comparisons with no `DiffUpdated`; it samples synchronously
+at the safe input-loop boundary to avoid a scheduled-idle feedback loop.
+Unchanged hunk updates are no-ops. Manual Reader entry checks diff before any
+buffer preparation or policy mutation, preserving the active comparison.
 
 Insert keys use a cancellable, temporary Source pause. The native key is placed
 at the front of typeahead after the Source transition; InsertLeave releases only

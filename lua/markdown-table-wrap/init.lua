@@ -1,6 +1,6 @@
 local M = {}
 
-M.version = "0.8.0"
+M.version = "0.9.0"
 
 local config_module = require("markdown-table-wrap.config")
 M.config = config_module.defaults()
@@ -23,6 +23,8 @@ M.state = {
   last_signature = {},
   did_setup = false,
   visual_buffers = {},
+  diff_seen = {},
+  window_suspend = {},
   float_source_bufnr = nil,
   float_source_winid = nil,
   float_source_alt_bufnr = nil,
@@ -531,6 +533,14 @@ end
 
 function M.reader_preview(opts)
   opts = opts or {}
+  -- Check before preparing Source or changing policy: swapping a diff window's
+  -- buffer would silently remove it from the comparison.
+  if vim.wo.diff then
+    if not opts.silent then
+      vim.notify("MarkdownTableWrap: leave diff mode before opening Reader.", vim.log.levels.INFO)
+    end
+    return nil
+  end
   local bufnr = vim.api.nvim_get_current_buf()
   local reader = require("markdown-table-wrap.reader")
 
@@ -699,7 +709,7 @@ function M.preview()
   M.inline_preview()
 end
 
-function M.refresh_auto(opts)
+local function refresh_auto(opts, resume_reader)
   opts = opts or {}
   local bufnr = normalize_bufnr(opts.bufnr)
   local inline = require("markdown-table-wrap.inline")
@@ -744,10 +754,17 @@ function M.refresh_auto(opts)
     return
   end
 
+  -- Diff compares this window's buffer bytes. Reader/Inline overlays break
+  -- alignment. Valid only for the window refresh_auto is running in
+  -- (nvim_win_call from schedule_refresh, or the current window).
+  if vim.wo.diff then
+    return
+  end
+
   local parser = require("markdown-table-wrap.parser")
   if config.preview_mode == "reader" then
     local reader = require("markdown-table-wrap.reader")
-    if reader.has_source_readers(bufnr) then
+    if not resume_reader and reader.has_source_readers(bufnr) then
       reader.refresh_source(bufnr)
       return
     end
@@ -823,6 +840,10 @@ function M.refresh_auto(opts)
     view_bufnr = bufnr,
     winid = vim.api.nvim_get_current_win(),
   })
+end
+
+function M.refresh_auto(opts)
+  return refresh_auto(opts)
 end
 
 function M.schedule_refresh(opts)
@@ -1108,6 +1129,122 @@ function M.scroll_view_to(position)
   end
 end
 
+local function forget_window_suspend(winid)
+  winid = tonumber(winid)
+  if not winid then
+    return
+  end
+  if M.state.diff_seen then
+    M.state.diff_seen[winid] = nil
+  end
+  if M.state.window_suspend then
+    M.state.window_suspend[winid] = nil
+  end
+end
+
+local function forget_source_suspend(source_bufnr)
+  source_bufnr = tonumber(source_bufnr)
+  if not source_bufnr or not M.state.window_suspend then
+    return
+  end
+  for winid, rec in pairs(M.state.window_suspend) do
+    if rec.source_bufnr == source_bufnr then
+      M.state.window_suspend[winid] = nil
+    end
+  end
+end
+
+local function suspend_reader_for_diff(winid)
+  local reader = require("markdown-table-wrap.reader")
+  if not vim.api.nvim_win_is_valid(winid) then
+    return
+  end
+  local bufnr = vim.api.nvim_win_get_buf(winid)
+  if not reader.is_reader(bufnr) then
+    return
+  end
+  local source_bufnr = reader.source_bufnr(bufnr)
+  if not source_bufnr then
+    return
+  end
+  local manual = auto_preview_for(source_bufnr) ~= true
+  if not reader.close(bufnr, { preserve_view = true, winid = winid }) then
+    return
+  end
+  if vim.api.nvim_win_is_valid(winid) then
+    -- Buffer swap can leave window-local 'diff' set while Source is not in
+    -- the tabpage diff list. :diffthis is idempotent if already registered.
+    local ok, err = pcall(vim.api.nvim_win_call, winid, function()
+      vim.cmd("diffthis")
+    end)
+    if not ok then
+      vim.notify("MarkdownTableWrap: could not re-enable diff: " .. tostring(err), vim.log.levels.ERROR)
+    end
+  end
+  M.state.window_suspend[winid] = {
+    source_bufnr = source_bufnr,
+    was_reader = true,
+    manual = manual,
+  }
+end
+
+local function resume_reader_after_diff(winid)
+  local rec = M.state.window_suspend[winid]
+  M.state.window_suspend[winid] = nil
+  if not rec or rec.was_reader ~= true then
+    return
+  end
+  if not vim.api.nvim_win_is_valid(winid) then
+    return
+  end
+  local source_bufnr = rec.source_bufnr
+  if not source_bufnr or not vim.api.nvim_buf_is_valid(source_bufnr) then
+    return
+  end
+  if M.state.paused_buffers[source_bufnr] then
+    return
+  end
+  pcall(vim.api.nvim_win_call, winid, function()
+    if vim.api.nvim_win_get_buf(winid) ~= source_bufnr then
+      return
+    end
+    if rec.manual then
+      M.reader_preview({ silent = true })
+    else
+      -- We are outside the command (deferred DiffUpdated or SafeState). Restore this
+      -- particular window now, without Source-scoped debounce cancellation or
+      -- treating a sibling Reader as a substitute for this window's view.
+      refresh_auto({ bufnr = source_bufnr, silent = true }, true)
+    end
+  end)
+end
+
+local function sync_diff_windows()
+  M.state.diff_seen = M.state.diff_seen or {}
+  M.state.window_suspend = M.state.window_suspend or {}
+  local live = {}
+  for _, winid in ipairs(vim.api.nvim_list_wins()) do
+    live[winid] = true
+    if vim.api.nvim_win_is_valid(winid) then
+      local now = vim.wo[winid].diff == true
+      local was = M.state.diff_seen[winid] == true
+      if now and not was then
+        suspend_reader_for_diff(winid)
+      elseif was and not now then
+        resume_reader_after_diff(winid)
+      end
+      if vim.api.nvim_win_is_valid(winid) then
+        M.state.diff_seen[winid] = vim.wo[winid].diff == true
+      end
+    end
+  end
+  for winid in pairs(M.state.diff_seen) do
+    if not live[winid] then
+      forget_window_suspend(winid)
+    end
+  end
+end
+
 local function create_autocmds()
   if M.state.augroup then
     vim.api.nvim_del_augroup_by_id(M.state.augroup)
@@ -1145,6 +1282,27 @@ local function create_autocmds()
     callback = function(args)
       local bufnr = args.buf ~= 0 and args.buf or vim.api.nvim_get_current_buf()
       require("markdown-table-wrap.reader").invalidate_source_view(bufnr, vim.api.nvim_get_current_win())
+    end,
+  })
+
+  -- DiffUpdated is not guaranteed when there is no comparison to update
+  -- (one diff window, or identical Reader buffers). Observe the settled flag
+  -- at the real input-loop boundary as well. Do not schedule from SafeState:
+  -- another scheduled callback can itself cause a new idle transition.
+  vim.api.nvim_create_autocmd("SafeState", {
+    group = M.state.augroup,
+    callback = sync_diff_windows,
+  })
+
+  vim.api.nvim_create_autocmd("DiffUpdated", {
+    group = M.state.augroup,
+    callback = function()
+      -- :diffsplit can fire this mid-command (E788 on buffer switch).
+      vim.schedule(function()
+        if M.state.did_setup then
+          sync_diff_windows()
+        end
+      end)
     end,
   })
 
@@ -1368,6 +1526,7 @@ local function create_autocmds()
         M.state.gx_callbacks[args.buf] = nil
         M.state.last_signature[args.buf] = nil
         M.state.visual_buffers[args.buf] = nil
+        forget_source_suspend(args.buf)
         if M.state.inline_buf == args.buf then
           M.state.inline_buf = nil
         end
@@ -1404,6 +1563,7 @@ local function create_autocmds()
       require("markdown-table-wrap.inline").detach_window(winid)
       require("markdown-table-wrap.inline").clear_window_views(winid)
       require("markdown-table-wrap.reader").clear_saved_views(nil, winid)
+      forget_window_suspend(winid)
     end,
   })
 
@@ -1461,8 +1621,15 @@ function M.setup(opts)
   M.state.last_signature = {}
   M.state.visual_buffers = {}
   M.state.inline_buf = nil
+  M.state.diff_seen = {}
+  M.state.window_suspend = {}
   require("markdown-table-wrap.reader").clear_saved_views()
   create_autocmds()
+  for _, winid in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_is_valid(winid) then
+      M.state.diff_seen[winid] = vim.wo[winid].diff == true
+    end
+  end
   require("markdown-table-wrap.commands").register(M)
   require("markdown-table-wrap.theme").apply(M.config)
   M.state.did_setup = true

@@ -1,302 +1,256 @@
 # Publishing Guide
 
-This is the maintenance and release procedure for the existing public
-repository. The repository has already been created; do not reinitialize it or
-rename its development branch as part of a release.
+Release procedure for the existing public repository. Do not reinitialize it,
+rename its development branch, or move a published tag.
 
-## Repository Facts
+## Current Release Status
 
 - Repository: `ice345/markdown-table-wrap.nvim`
 - Remote: `origin` (`git@github.com:ice345/markdown-table-wrap.nvim.git`)
-- Development/release branch: `master`
-- Latest published tag: `v0.8.0`. Its annotated tag and GitHub Release were
-  verified after publishing; the release record appears below.
-- Previous published tag: `v0.7.0` at
-  `281069c1107a510028fab5f5b0a74a226ed2036d`.
-- `v0.8.0` consolidates the former v0.7.1/v0.7.2 maintenance scope.
-- Supported Neovim baseline: 0.10+
+- Release branch: `master`
+- Latest published release: `v0.8.0`, at
+  `a5b676360946c7bce48c0b717ab05929761b88c8`.
+- Prepared target: `v0.9.0` — Reader Diff Coexistence; not yet published.
+- Supported Neovim baseline: 0.10+; CI matrix: Ubuntu × 0.10.4 and stable.
 
-Verify these values rather than assuming the local checkout is current:
+Verify remote state before release. Local planning in the ignored ROADMAP.md is
+optional context; a fresh checkout can execute this guide without that file.
+Do not count previous-release CI or manual results as evidence for new code.
+Commit, push, tag, and publication each require maintainer authorization.
+
+## 1. Review Scope And Align Documentation
 
 ```sh
 git remote -v
 git branch --show-current
 git fetch origin --tags
 git status --short
-git tag --sort=-version:refname | head
+git log --oneline v0.8.0..master
+git diff v0.8.0 --stat
 ```
 
-The v0.4.0 section below is the retained release record and checklist example;
-the same gates apply to v0.8.0 and later releases. Substitute the target
-version and milestone scope from the maintainer-local `ROADMAP.md`. Release
-only from `master`, with no unrelated local changes, after the branch is up to
-date with `origin/master`.
+Review both committed and uncommitted changes. Preserve unrelated local edits;
+select only reviewed release files for the preparation commit. For v0.9.0:
 
-## Historical v0.4.0 Checklist
-
-Before preparing v0.4.0:
-
-1. Stop adding features not listed in the v0.4.0 CHANGELOG section.
-2. Review every commit since the previous release:
-
-   ```sh
-   git log --oneline v0.3.0..master
-   git diff --stat v0.3.0..master
-   ```
-
-3. Confirm each user-visible change has a regression test or a documented
-   manual check.
-4. Confirm the renderer still does not modify Markdown source text.
-5. Move unfinished work to the maintainer-local `ROADMAP.md`; it is intentionally
-   ignored and is not part of the public plugin checkout.
-
-## 2. Align Version And Documentation
-
-For v0.4.0, all of the following must agree:
-
-- `M.version` in `lua/markdown-table-wrap/init.lua`
-- The top release in `CHANGELOG.md`
-- README configuration/default behavior
-- `doc/markdown-table-wrap.txt`
-- The annotated Git tag `v0.4.0`
-- The GitHub release title
-
-Search for stale version/default references:
+- `M.version` must be `0.9.0`.
+- CHANGELOG, README, Vim help, architecture, and the release notes must agree
+  about Reader diff suspension, restoration, and manual-entry refusal.
+- Set the top CHANGELOG release date to the actual publication date when ready
+  to publish; do not leave a guessed past date or claim publication prematurely.
+- Keep existing Inline/diff and Reader insertion-position limits explicit.
+- ROADMAP.md, AGENTS.md, CODEX_HANDOFF.md, and RELEASE.local.md remain ignored
+  local files. Do not force-add them to the release.
 
 ```sh
-rg -n '0\.[0-9]+\.[0-9]+|map_gx|auto_open|your-name|ft = ' \
-  README.md CHANGELOG.md PUBLISHING.md doc lua tests
+nvim --headless -u NONE -c "helptags doc" -c "qa!"
 ```
 
-Regenerate Vim help tags after help changes:
+Review `doc/tags` if changed. Check relative documentation links; public docs
+must not require a maintainer-local file to exist.
 
-```sh
-nvim --headless -u NONE \
-  -c "helptags doc" \
-  -c "qa!"
-```
+## 2. Automated Gates
 
-Review `doc/tags` and commit it when regeneration changes the file.
-
-## 3. Run Automated Gates
-
-From the plugin repository root:
+From the repository root:
 
 ```sh
 stylua --check .
-```
-
-```sh
-nvim --headless -u NONE --cmd "set shadafile=NONE" --cmd "set noswapfile" \
-  -c "set rtp+=." \
-  -c "luafile tests/run.lua" \
-  -c "qa!"
-```
-
-The GitHub Actions workflow repeats formatting and the headless suite on:
-
-- Neovim 0.10.4
-- Neovim stable
-
-Also run whitespace and documentation checks:
-
-```sh
 git diff --check
+nvim --headless -u NONE --cmd "set shadafile=NONE" --cmd "set noswapfile" \
+  -c "set rtp+=." -c "luafile tests/run.lua" -c "qa!"
+nvim --headless -u NONE --cmd "set shadafile=NONE" --cmd "set noswapfile" \
+  -c "set rtp+=." -c "luafile tests/benchmark.lua" -c "qa!"
+nvim --headless -u NONE -c "set rtp+=." -c "help markdown-table-wrap" -c "qa!"
 ```
 
+Run the suite with Neovim 0.10.4 and stable. Local `.agent/check.sh` and
+`.agent/check-perf.sh` are optional conveniences, not dependencies of this guide.
+Interpret benchmark results using [docs/performance.md](docs/performance.md).
+
+For lifecycle/input changes, use the UI-attached runner:
+
 ```sh
-nvim --headless -u NONE \
-  -c "set rtp+=." \
-  -c "help markdown-table-wrap" \
-  -c "qa!"
+uv run --with pynvim python tests/ui_smoke.py
+uv run --with pynvim python tests/ui_smoke.py --nvim /absolute/path/to/nvim-0.10.4
 ```
 
-Open every relative link in README, CHANGELOG, PUBLISHING, and ROADMAP during
-release review, and confirm every referenced file exists in the checkout.
-
-## 4. Run The v0.4.0 Manual Matrix
-
-Use a saved Markdown file with no table, one short table, one very wide table,
-several tables, links, escaped pipes, code spans, and mixed CJK/English text.
-
-### Default Behavior And State Isolation
-
-- With the default `reader.auto_open = "has_table"`, confirm plain Markdown
-  remains in Source.
-- Confirm a document containing a table automatically opens Reader and renders
-  all tables without cursor focus.
-- Set `reader.auto_open = "always"` and confirm a table-free supported buffer
-  opens Reader.
-- Open two Markdown buffers, choose different views, and confirm toggling one
-  does not change the other's mode or the global configured default.
-- Trigger edits/refreshes in two buffers in quick succession and confirm each
-  buffer refreshes itself rather than cancelling or rendering the other.
-- Wipe a rendered buffer and confirm reopening a document does not inherit stale
-  viewport, timer, or view state.
-- Leave an automatically opened Reader through native buffer navigation, return
-  to its Source, and confirm Reader reopens. Explicit close/edit must still
-  report `paused=true` and remain in Source.
-- Run `tests/benchmark.lua`, compare all scenarios with
-  `docs/performance.md`, and inspect the selected discovery backend and cache
-  stages with `:MarkdownTableInspect`.
-
-### Mappings And Links
-
-- Define a custom `gx` mapping before loading the plugin. With default
-  `map_gx = false`, confirm the mapping remains unchanged in Source.
-- Confirm `:MarkdownTableOpenLink` opens a table-cell URL.
-- Set `map_gx = true` and confirm table links open through the opt-in mapping.
-- Confirm Reader `gx` opens the original URL rather than its displayed label.
-- Confirm ordinary links outside tables retain their normal behavior.
-- Confirm Reader ordinary positions delegate custom callback/string/expr `gx`
-  mappings exactly once and rendered targets do not also run the fallback.
-- Open relative/absolute files, same-file/file anchors, wiki links, URLs,
-  images, missing targets, and a cell with multiple targets from Reader and
-  Float. Confirm relative paths use the Source directory.
-- Confirm edit/split/vsplit/tab target strategies and one custom resolver.
-
-### Reader, Inline, And Float
-
-- Confirm Reader Visual selection/yank uses real rendered lines and does not
-  edit source text.
-- Confirm `i`, `a`, `I`, `A`, `o`, and `O` return to the mapped source line and
-  Reader reopens after `InsertLeave`.
-- Confirm `:w`, `:wq`, `:x`, and `ZZ` forward saves to the backing Markdown
-  source; confirm anonymous-buffer errors are clear.
-- Confirm `:MarkdownTableToggleReader`, `:MarkdownTableEditSource`, and
-  `:MarkdownTableToggleInline` have the documented transitions.
-- Run `:MarkdownTableDisableAutoPreview` from Reader and confirm it disables
-  automatic rendering for the backing Source buffer.
-- Confirm Inline restores window-local `wrap`, `conceallevel`, and
-  `concealcursor` when leaving the buffer or clearing the view.
-- Confirm full Inline and viewport-sliced Inline scrolling/top/bottom commands.
-- Confirm linked semantic content highlights do not fill every Inline cell when
-  their source group has a background; verify an explicit `bg` still opts in.
-- Confirm code-wrapped link and image labels keep Inline separators aligned,
-  including labels containing CJK text and multiple backticks.
-- Confirm wrapped header continuation rows retain the Header highlight in both
-  Inline replace and insert modes.
-- Scroll an Inline viewport, call `setup()` again, and confirm the stale viewport
-  offset is not retained.
-- Change Reader window options through a repeated `setup()` call and confirm an
-  already open Reader adopts them; confirm a delayed pre-setup refresh cannot
-  overwrite the new configuration.
-- Confirm Float opens, scrolls, follows link metadata, and closes with `q`.
-- Confirm native `:bnext`, `:bprevious`, and `<C-^>` leave Reader without a
-  listed scratch buffer or lost Source changes, including with `hidden` off.
-- Confirm custom `H`/`L`, Bufferline, Telescope, and Harpoon transitions using
-  explicit Reader passthrough or leave-then-delegate actions. Returning to an
-  unpaused Source must restore its Reader cursor and viewport; explicit close
-  must remain in Source.
-- Open the same Source in two windows with different widths. Confirm independent
-  Readers, Source edit refresh, and cleanup after closing either Reader.
-- Run `:MarkdownTableInspect`, `:MarkdownTableHelp`, and the statusline API in
-  Source, Inline, Reader, and Float.
-
-### Parsing, Performance, Theme, And Filetypes
-
-- Confirm fenced table-shaped text is ignored, including backtick and tilde
-  fences.
-- Confirm escaped pipes and pipes inside single/multiple-backtick code spans.
-- Confirm compact one-hyphen GFM delimiter cells are accepted, while malformed
-  delimiter rows and adjacent pipe-like prose are rejected.
-- Exercise the large invalid-pipe regression fixture and verify editing remains
-  responsive.
-- Render a long table and verify border highlighting does not create one extmark
-  per border character.
-- Switch colorschemes and confirm semantic table highlights are reapplied.
-- Confirm lazy-loading and rendering for `markdown`, `quarto`, and `rmd`.
-- Confirm coexistence with `render-markdown.nvim` when its
-  `pipe_table.enabled` is `false`.
-- Run `:checkhealth markdown-table-wrap` in the representative setup.
-
-Record the Neovim version, OS, terminal/UI, colorscheme, and any manual failures
-in the release PR or release issue.
-
-## 5. Verify CI On `master`
-
-Push the release-preparation commit normally and wait for every GitHub Actions
-matrix job to pass. Do not tag a local commit that is not yet present on
-`origin/master`.
-
-Useful checks with GitHub CLI, if installed:
+Where the personal LazyVim integration is installed, also run:
 
 ```sh
-gh run list --branch master --limit 5
-gh run view --log-failed
+uv run --with pynvim python tests/ui_smoke.py --lazyvim
 ```
 
-Before tagging:
+See [tests/README.md](tests/README.md) for coverage and the complete manual
+matrix. Grid tests are additionally relevant when changing geometry/overlays.
+
+## 3. v0.9.0 Manual Release Matrix
+
+Use real saved Markdown files and type commands in a terminal:
+
+1. Open two different Sources as Readers. Enter `:diffthis` in each; both must
+   show raw Source with correct hunk highlighting and remain diff participants.
+   `:diffoff!` must restore each Reader without pausing Source.
+2. Repeat with `auto_preview=false` and manually opened Readers.
+3. Open the same Source in two Readers. Diff just one, then both; after leaving
+   diff, each suspended window must restore independently. Also test a single
+   diff window and identical-content comparisons.
+4. Start in a long wrapped table with a nonzero cursor column and scroll offset.
+   An unchanged diff round trip must restore the correct window's view. Moving
+   or editing Source during diff must take precedence over a stale snapshot.
+5. In diff, invoke `:MarkdownTableToggleReader`; Source and diff must remain
+   intact. Explicitly disable automatic preview; leaving diff must not reopen
+   Reader. Closing the window or wiping Source must not resurrect it.
+6. Run `:diffupdate`, `:diffget`, and `:diffput` with an unrelated Markdown
+   window present. That window must not be refreshed merely because hunks
+   changed. Hunk changes must apply to raw Source, never rendered table borders.
+7. Exercise `:diffsplit` as well as `:diffthis` to check deferred transitions.
+8. Recheck normal reading/editing/saving, native buffer navigation, and the
+   applicable integration checks in tests/README.md.
+
+UI-attached automated input checks do not prove terminal font/compositor or
+hunk appearance. Record runtime, OS, terminal/UI, tested cases, and failures.
+Windows native execution and Linux compositor verification remain unrun unless
+new evidence is recorded; absence of issues is not verification.
+
+## 4. Commit And Verify CI On master
+
+Suggested commit message for the complete v0.9.0 preparation:
+
+```text
+fix(reader): preserve window-local Reader state across diff mode
+
+Suspend Reader to canonical Source while a window is diffing and restore
+that window after diff ends, including manual and shared-Source Readers.
+Reject Reader entry during diff without changing Source or preview policy.
+Handle diff transitions that do not emit DiffUpdated at the safe input boundary.
+
+Add lifecycle and real-input regressions, strengthen viewport and hunk-update
+checks, and prepare the v0.9.0 documentation and release notes.
+
+Refs #9
+```
+
+Use `Refs #9`: the PR was closed and this is an in-tree implementation, not a
+claim that its original patch was merged unchanged. Stage the reviewed public
+files explicitly, inspect `git diff --cached`, then commit and push only when
+ready and authorized. The ignored roadmap does not belong in this commit.
+
+After the preparation commit is pushed normally to `origin/master`:
 
 ```sh
+gh run list --branch master --commit "$(git rev-parse HEAD)" --limit 5
+gh run watch <run-id> --exit-status
+```
+
+Both Neovim matrix jobs must pass for that exact commit. If anything changes,
+repeat relevant checks and wait for CI on the new commit before tagging.
+
+## 5. Create A New Annotated Tag
+
+Only after the release gates above are satisfied:
+
+```sh
+git fetch origin --tags
 git status --short
+git branch --show-current
 git rev-parse HEAD
 git rev-parse origin/master
 ```
 
-The final two commit IDs must match and `git status --short` must be empty.
-
-## 6. Tag v0.4.0
-
-Create an annotated tag on the verified `master` commit:
+Require a clean `master` and matching commit IDs. Check that `v0.9.0` is not
+already published; never force or recreate an existing tag.
 
 ```sh
-git tag -a v0.4.0 -m "markdown-table-wrap.nvim v0.4.0"
-git show --stat v0.4.0
-git push origin v0.4.0
+git tag -a v0.9.0 -m "markdown-table-wrap.nvim v0.9.0"
+git show --stat v0.9.0
+git push origin v0.9.0
 ```
 
-Never move or reuse a published tag. If a release contains a defect, prepare a
-new patch release such as v0.4.1.
-
-## 7. Publish The GitHub Release
-
-Create a release from the existing tag:
+Check tag CI as well:
 
 ```sh
-gh release create v0.4.0 \
-  --title "markdown-table-wrap.nvim v0.4.0" \
-  --notes-file /path/to/release-notes.md
+gh run list --branch v0.9.0 --limit 5
+gh run watch <tag-run-id> --exit-status
 ```
 
-The notes should be derived from the v0.4.0 CHANGELOG entry. State explicitly
-that the v0.3 mode/action contract remains compatible, Lua discovery remains
-the guaranteed path, and no new Source mapping is enabled by default.
+If a pushed tag reveals a defect, keep the tag immutable and prepare the next
+appropriate version. Do not publish notes claiming failed checks passed.
 
-The real media currently tracked in this repository are:
+## 6. Publish The GitHub Release
 
-- `docs/01-inline-tokyonight.png`
-- `docs/02-inline-scroll.gif`
-- `docs/02b-inline-full-toggle.png`
-- `docs/03-floating-long-table.png`
+Copy the v0.9.0 notes below to `RELEASE.local.md` (ignored), review them against
+the final CHANGELOG, then publish from the existing remote tag:
 
-Use only those files unless new media is committed and reviewed first. The
-plugin itself needs no compiled archive or binary release asset; lazy.nvim
-installs directly from the Git tag.
+```sh
+gh release create v0.9.0 --verify-tag \
+  --title "v0.9.0 — Reader Diff Coexistence" \
+  --notes-file RELEASE.local.md
+```
 
-## 8. Verify The Published Tag
+No compiled archive or binary asset is required. lazy.nvim installs from the
+Git tag. Do not substitute an unreleased branch for the verified tag.
 
-After publishing:
+## 7. Verify Publication
 
-1. Open the GitHub release and confirm its tag and target commit.
-2. Install from a clean plugin-manager cache using the public specification:
+- Confirm the release tag points to the reviewed commit.
+- Install using `version = "v0.9.0"` from a clean plugin-manager cache.
+- Confirm `require("markdown-table-wrap").version` reports `0.9.0`.
+- Run `:checkhealth markdown-table-wrap`, open a table-free document and a
+  document with a table, and check one Reader/diff round trip.
+- Update the current-release status above after publication. Preserve actual
+  verification evidence; do not describe future gates as completed work.
 
-   ```lua
-   return {
-     {
-       "ice345/markdown-table-wrap.nvim",
-       version = "v0.4.0",
-       ft = { "markdown", "quarto", "rmd" },
-       opts = {},
-     },
-   }
-   ```
+## v0.9.0 Release Notes Draft
 
-3. Run `:checkhealth markdown-table-wrap`.
-4. Open one table-free Markdown file and one file with a table.
-5. Confirm `require("markdown-table-wrap").version` reports `0.4.0`.
-6. Confirm README and Vim help match the installed tag rather than unreleased
-   `master` behavior.
+v0.9.0 makes Reader coexist with Neovim diff mode while keeping the original
+Markdown Source authoritative.
+
+### Fixed
+
+- Entering diff in a Reader window temporarily shows its Source and preserves
+  the Reader view snapshot. The Source is re-registered for diff after the swap.
+- Leaving diff restores each suspended Reader independently, including manually
+  opened Readers with `auto_preview=false` and windows sharing one Source.
+- Single-window and identical-content comparisons are detected even when no
+  `DiffUpdated` event is emitted. Ordinary hunk updates do not trigger unrelated
+  Markdown window refreshes.
+- Reader commands refuse to open in an active diff window, preserving the
+  comparison and preview policy. Explicit pause/disable and window/Source cleanup
+  prevent unwanted restoration.
+
+### Compatibility and scope
+
+No configuration migration is required. Existing command names, Plug mappings,
+Lua action names, and User event names are unchanged. Neovim 0.10+ remains the
+baseline, and automatic rendering never rewrites Source.
+
+Existing Inline overlays are buffer-scoped and are not suspended per diff
+window. Reader insertion keys still map table-cell positions to the Source cell
+start; use `cic` or `:MarkdownTableEditCell` for explicit cell editing.
+
+Thanks for the reproduction and Source/diff investigation in #9.
+
+
+## v0.9.0 Verification Record
+
+Verified locally on macOS/Apple Silicon, 2026-09-19:
+
+- 310 headless tests pass on Neovim 0.10.4 and 0.12.5.
+- Clean-Neovim UI-attached real-input checks: 64 pass on each runtime.
+- Personal LazyVim/Bufferline/Snacks integration: 65 checks pass on 0.12.5.
+- StyLua, whitespace checks, Vim help generation/loading pass.
+- Neovim 0.12.5 parser benchmarks: 10k prose 14.13 ms, 10k invalid pipe
+  candidates 155.70 ms, 500 small tables 21.97 ms, 1k semantic rows 28.68 ms;
+  all within the documented reference budgets. These are machine-specific.
+
+Still required for publication: the applicable terminal/manual matrix above,
+including visible diff hunks and `:diffsplit`; CI on the exact master release
+commit and its new tag; and clean-tag installation after publication. Native
+Windows and Linux compositor checks were not performed. No commit, push, tag,
+or GitHub release was created during this local preparation.
+
+## Historical Release Records
+
+The records below describe earlier releases and are not v0.9.0 verification.
 
 ## v0.4.0 Release Notes Draft
 
@@ -517,17 +471,3 @@ Known boundary:
 - Native `:write !cmd` and filters stream the rendered current buffer because
   Neovim bypasses file-write hooks for that shell path. Enter Source first when
   raw Markdown must be sent to a command.
-
-## Future Releases
-
-For every later release, replace the previous/next version values in this guide,
-use the relevant milestone gate in the maintainer-local roadmap, and repeat the
-same sequence:
-
-1. Freeze scope.
-2. Align version, documentation, and tests.
-3. Pass automation and the release-specific manual matrix.
-4. Push the release commit to `origin/master` and wait for CI.
-5. Create a new annotated tag.
-6. Publish matching GitHub release notes.
-7. Verify a clean installation from the public tag.

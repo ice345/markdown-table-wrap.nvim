@@ -44,7 +44,7 @@ scrolling. It does not substitute for platform font/compositor checks.
 | GFM parsing | `parser_spec.lua` | delimiter validation, escaped/optional outer pipes, GFM missing-cell rows, shared UTF-8/pipe/fence semantics, blockquote Source spans, fenced and block boundaries, linear large-document scanning |
 | Inline Markdown | `markdown_spec.lua`, `wrap_spec.lua` | code, emphasis, links, icons, concealed code delimiters, hard breaks, CJK width and sentence punctuation, preferred wrap boundaries, metadata preservation |
 | Geometry | `width_spec.lua`, `render_spec.lua` | display width, padding, alignment, border variants, source-row mapping, fit-to-window, intentional width overflow, and visible excess-Source-cell diagnostics |
-| Neovim views | `inline_spec.lua`, `reader_spec.lua`, `mode_spec.lua`, `lifecycle_spec.lua`, `multiwindow_spec.lua`, `cell_ops_spec.lua`, `reader_ergonomics_spec.lua`, `table_edit_spec.lua` | conceal/extmarks, wrap scope, viewport scrolling, per-buffer debounce/state and setup preservation/reset, Reader policy, auxiliary-buffer exclusion, native buffer exits, shared-Source Readers, multiwindow resize fanout, transactional Reader open/refresh rollback, window option and lifetime cleanup, Source-aware cell registers/count rejection/native `c` motions/undo-redo repeat and visible Visual feedback, sticky headers, indexed cell lookup/refocus, narrow Reader snapshots, help ergonomics, raw-Source formatting, explicit Source table rewrites, adaptive one-cell popup edits, header-row refusal, and unsafe-table guards |
+| Neovim views | `inline_spec.lua`, `reader_spec.lua`, `mode_spec.lua`, `lifecycle_spec.lua`, `multiwindow_spec.lua`, `cell_ops_spec.lua`, `reader_ergonomics_spec.lua`, `table_edit_spec.lua`, `diff_mode_spec.lua` | conceal/extmarks, wrap scope, viewport scrolling, per-buffer debounce/state and setup preservation/reset, Reader policy, auxiliary-buffer exclusion, native buffer exits, shared-Source Readers, multiwindow resize fanout, transactional Reader open/refresh rollback, window option and lifetime cleanup, Source-aware cell registers/count rejection/native `c` motions/undo-redo repeat and visible Visual feedback, sticky headers, indexed cell lookup/refocus, narrow Reader snapshots, help ergonomics, raw-Source formatting, explicit Source table rewrites, adaptive one-cell popup, window-local `'diff'` suspend without pause |
 | Context and actions | `context_spec.lua`, `actions_spec.lua`, `inspect_spec.lua` | Source resolution across modes, stable actions and Plug mappings, disabled/local mappings, passthrough, logical statusline rows, excess-cell reporting, Reader key help, and health diagnostics |
 | Links, registers, and mappings | `links_spec.lua`, `export_spec.lua`, `mappings_spec.lua` | relative/absolute files, local/remote file URIs, line/anchor/wiki/image/URL targets, external-scheme allowlisting, clipboard-option semantics, Float/Reader metadata, custom resolver, selector, callback/string/expr/remap/replace_keycodes restore semantics |
 | Interaction | `nav_spec.lua`, `config_spec.lua`, `system_spec.lua` | logical Source/Reader/Float cell navigation, public Reader→Float→Reader→Inline command transitions, typed leader mapping survival across automatic Reader debounce, Float origin restoration across close/toggle/refresh, Source-resolved status/auto-preview/Inline-viewport commands, viewport-mode feedback, extracted command registration, isolated defaults/options, configuration validation, unknown-option diagnostics, lazy-loading timing, and filetype boundaries |
@@ -127,3 +127,13 @@ plugins' extmarks are outside a headless process:
     cell; and explicit format keeps every generated row inside the quote with
     aligned physical pipes. Confirm a list-contained table remains visible and
     unparsed.
+
+18. For Reader/diff changes, type `:diffthis` and `:diffoff!` in a real UI.
+    Include a single diff window, two different Sources with visible hunks,
+    and two Readers sharing one Source (one or both suspended). Restore a long
+    table from a nonzero viewport and wrapped-cell column; verify the correct
+    window. While diff is active, Reader commands must preserve Source and diff.
+    Hunk updates must not reopen unrelated windows, and explicit disable must
+    prevent return. The UI smoke runner covers typed single-window suspension,
+    shared-Source restoration, and command refusal; terminal hunk appearance
+    remains a manual release check.

@@ -108,6 +108,13 @@ In Reader:
 - Native `v`, `V`, and `<C-v>` select real rendered text. Follow with `y` to
   copy the visible Unicode table.
 
+Diff uses the original Source buffer. Entering diff temporarily suspends Reader
+in that window; leaving diff restores it, including manually opened Readers and
+Readers sharing a Source across windows. An explicit pause or disable prevents
+restoration. Reader commands refuse to open while that window is in diff, so
+previewing cannot silently end a comparison. Existing Inline overlays are
+buffer-scoped and are not suspended per diff window.
+
 Reader is unlisted, so Bufferline/LazyVim `H` and `L` mappings need explicit
 passthrough. These actions are temporary navigation: returning to the Source
 restores Reader at the saved cursor and scroll position. A Source that was

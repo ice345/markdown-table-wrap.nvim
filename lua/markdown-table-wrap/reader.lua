@@ -952,7 +952,10 @@ function M.close(reader_bufnr, opts)
     return nil
   end
 
-  local winid = state.winid
+  local winid = opts.winid
+  if not winid or not vim.api.nvim_win_is_valid(winid) or vim.api.nvim_win_get_buf(winid) ~= reader_bufnr then
+    winid = state.winid
+  end
   if not winid or not vim.api.nvim_win_is_valid(winid) or vim.api.nvim_win_get_buf(winid) ~= reader_bufnr then
     winid = vim.fn.win_findbuf(reader_bufnr)[1]
   end

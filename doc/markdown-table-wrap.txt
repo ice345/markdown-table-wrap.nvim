@@ -91,8 +91,14 @@ Default interaction:
   target it delegates to the Source mapping captured when Reader opened, or to
   native gx when available. Source-buffer gx is left untouched by default;
   native buffer/window navigation dismisses Reader without pausing Source, so
-  returning to an auto-preview Source restores Reader. Explicit close/edit or
-  disable actions keep their persistent pause semantics.
+  returning to an auto-preview Source restores Reader. Turning `'diff'` on in a
+  Reader window is the same class of temporary leave: Source is shown for the
+  diff, then Reader (including a manually opened one) returns when `'diff'`
+  turns off. Explicit close/edit or disable actions keep their persistent
+  pause semantics. Shared-Source Readers restore independently per window.
+  Reader commands refuse to open in an active diff window without changing
+  Source or preview policy. Existing Inline overlays are buffer-scoped and
+  are not suspended per diff window.
   see |markdown-table-wrap-map-gx|.
 
 FILE WRITES AND SESSIONS

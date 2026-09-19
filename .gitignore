@@ -7,6 +7,9 @@ nvim.log
 .luarc.json
 .lazy.lua
 .cache/
+.agent/
+.omp/
+study/
 tmp/
 dist/
 coverage/

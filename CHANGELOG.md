@@ -2,6 +2,30 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
+## 0.9.0 - Reader Diff Coexistence
+
+Unreleased; release preparation.
+
+### Fixed
+
+- Temporarily show Source in a window that enters `'diff'` while Reader is
+  open, then restore that Reader (including a manually opened one) when
+  `'diff'` turns off. Viewport snapshots are kept; Source is not paused.
+  Hunk updates (`:diffupdate`, `diffget`, `diffput`) do not refresh
+  neighboring Markdown windows. After the Source swap, `:diffthis` is
+  re-applied so the tabpage diff list includes Source.
+- Restore each suspended shared-Source Reader independently, even when another
+  window still has a Reader or both windows leave diff together.
+- Detect diff transitions at the safe input-loop boundary when a single-window
+  or identical-content comparison does not emit `DiffUpdated`.
+- Refuse manual Reader opening in diff before changing buffers or preview policy,
+  preserving the comparison and any explicit pause.
+
+### Changed
+
+- Default automatic Reader, guarded cell prefixes, and opt-in H/L remain.
+  Public commands, Lua `action()` names, and User events are unchanged.
+
 ## 0.8.0 - Source-Safe Maintenance And Lifecycle Hardening
 
 Released 2026-09-09.

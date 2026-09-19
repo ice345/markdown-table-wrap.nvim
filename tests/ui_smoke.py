@@ -141,6 +141,16 @@ try:
       _G.smoke_second=require('markdown-table-wrap').reader_preview();_G.smoke_win2=vim.api.nvim_get_current_win()
     """)
     check(n.exec_lua("return smoke_first~=smoke_second and require('markdown-table-wrap.reader').is_reader(smoke_first)"), "two independent Readers share Source")
+    # Actual input/event-loop coverage for window-local diff suspension.
+    keys(":diffthis<CR>")
+    wait("return vim.api.nvim_get_current_buf()==smoke_source and vim.wo.diff", "typed diffthis suspends only this Reader")
+    check(n.exec_lua("return require('markdown-table-wrap.reader').is_reader(vim.api.nvim_win_get_buf(smoke_win1))"), "sibling Reader survives diff")
+    keys(":MarkdownTableToggleReader<CR>")
+    check(n.exec_lua("return vim.api.nvim_get_current_buf()==smoke_source and vim.wo.diff"), "typed Reader command preserves diff")
+    keys(":diffoff!<CR>")
+    wait("return require('markdown-table-wrap.reader').is_reader(vim.api.nvim_win_get_buf(smoke_win2))", "typed diffoff restores shared-Source Reader")
+    n.exec_lua("smoke_second=vim.api.nvim_win_get_buf(smoke_win2)")
+    check(n.exec_lua("return not require('markdown-table-wrap').state.paused_buffers[smoke_source]"), "diff round-trip does not pause Source")
     if args.lazyvim:
         # Invoke the actual configured Bufferline callback; only simulate the
         # user's Cancel response rather than opening a blocking confirmation.
