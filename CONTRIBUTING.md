@@ -38,6 +38,24 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before changing module
 ownership, mode state, Source mapping, lifecycle, caches, or rendering data
 flow.
 
+## Maintenance And Compatibility
+
+After 1.0, prioritize reproducible defects, compatibility changes, and concrete
+reading/editing workflows. A stable plugin does not need new features or a
+release on a fixed schedule. Maintainer use, supported Neovim upgrades, and
+relevant performance checks can reveal work even when no issue has been filed.
+
+For a proposed capability, describe the failing or missing workflow, why the
+existing commands/APIs are insufficient, acceptance examples, and Source-safety
+and maintenance costs. Keep speculative Markdown dialects, extra views, and
+large rewrites out of unrelated fixes.
+
+Preserve the documented 1.x contract in README and Vim help. Patch releases fix
+contract defects; minor releases add compatible capabilities. Changes to public
+APIs, defaults, mappings, or the supported baseline need compatibility review;
+breaking changes require a major release and migration notes. Cover changed
+contracts with behavioral regressions, not tests of private implementation.
+
 ## Pull Requests
 
 - Keep changes focused on Markdown table rendering unless the issue explicitly

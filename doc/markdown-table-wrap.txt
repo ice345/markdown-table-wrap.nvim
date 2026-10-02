@@ -846,6 +846,43 @@ extra_filetypes~
 ==============================================================================
 LUA API                                      *markdown-table-wrap-api*
 
+1.x compatibility~                       *markdown-table-wrap-compatibility*
+
+The documented configuration options and defaults, commands, Lua entry points,
+action and <Plug> names, User events, and mapping semantics are stable in 1.x.
+This includes parser.parse_lines(), parser.parse_all(), discovery.status(),
+and cache.inspect() below. Automatic rendering remains read-only; explicit
+edits resolve to Source. Native navigation and diff suspension are temporary
+view loss, while explicit close/edit/disable may pause automatic preview.
+
+Patch releases correct defects in this contract; minor releases add compatible
+capabilities. Breaking documented behavior, defaults, mappings, or the Neovim
+0.10+ baseline requires a major release with migration notes. No configuration
+migration is required from 0.9.0 to 1.0.0.
+
+Only documented entry points are public. Mutable module state/config, scratch
+buffer names, cache representation, refresh scheduling, and other internal
+module functions may change. Use setup() and the copied inspection helpers.
+Diagnostic counters and human-readable messages are not machine protocols.
+
+Source spans use 1-based lines and 0-based byte columns with exclusive ends.
+Table/cell identities describe the current parse, not persistent IDs across
+Source edits. Do not depend on Lua object identity or mutate returned models
+as a way to edit Source. Optional fields can be absent; compatible releases
+may add fields that consumers should ignore when unused.
+
+Event payloads contain scalar mode, source_bufnr, view_bufnr, and, when
+available, winid; leave events can include previous_view_bufnr. Buffer/window
+IDs can become invalid after disposal, so validate them before deferred use.
+Events are notifications, not a promise of one callback per keystroke or a
+fixed refresh cadence. Query get_state() for the current context.
+
+CI covers Ubuntu with Neovim 0.10.4 and stable. macOS/Apple Silicon has local
+headless, real-input, and UI-grid checks. Native Windows and Linux compositor
+behavior remain unverified. UI-grid checks do not verify terminal fonts.
+The existing limitations in this help still apply; 1.0 does not expand the
+supported Markdown subset or guarantee instant opening of large Readers.
+
 The inspection helpers return effective per-buffer state without changing it.
 
 get_buffer_config({bufnr})~      *markdown-table-wrap.get_buffer_config()*

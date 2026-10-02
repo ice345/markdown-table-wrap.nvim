@@ -67,6 +67,30 @@ Currently not supported:
   rendered views show an `⚠ +N excess Source cell(s)` warning, while structural
   editing and structured export refuse the ambiguous table.
 
+## 1.x Compatibility
+
+1.0 stabilizes the existing Source-backed workflow. No configuration migration
+is required from 0.9.0. Automatic rendering stays read-only; explicit edits
+resolve to Source, and native navigation or diff suspension does not pause it.
+
+The documented configuration options/defaults, commands, Lua APIs, action and
+`<Plug>` names, User events, and mapping semantics are the compatibility
+contract. This includes the documented parser and diagnostic entry points.
+Internal modules, mutable `state`/`config` tables, scratch-buffer names, cache
+storage, and refresh scheduling are not integration APIs. Use the copied
+inspection helpers instead of depending on internal state.
+
+Patch releases fix defects; minor releases add compatible capabilities. Removing
+or incompatibly changing documented behavior, mappings, defaults, or the Neovim baseline
+requires a major release and migration notes. New optional fields may be added;
+consumers should ignore fields they do not use. See
+`:help markdown-table-wrap-compatibility` for data and event boundaries.
+
+CI exercises Neovim 0.10.4 and current stable on Ubuntu. Local release checks
+also cover macOS/Apple Silicon, including UI-attached input and grid checks.
+Native Windows and Linux terminal/compositor behavior have not been verified;
+Neovim API compatibility alone is not a claim of visual verification there.
+
 ## Installation
 
 With `lazy.nvim` or LazyVim:
@@ -75,6 +99,7 @@ With `lazy.nvim` or LazyVim:
 return {
   {
     "ice345/markdown-table-wrap.nvim",
+    version = "^1", -- compatible stable releases
     ft = { "markdown", "quarto", "rmd", "rmarkdown" },
     opts = {},
   },

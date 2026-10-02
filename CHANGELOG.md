@@ -2,9 +2,29 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
+## 1.0.0 - Stable Source-Backed Workflow
+
+Release date: 2026-10-02.
+
+### Changed
+
+- Declare the documented configuration/defaults, commands, Lua APIs, action and
+  Plug names, User events, and mapping semantics as the 1.x compatibility
+  contract. Clarify model spans, transient identities, event lifetime, and
+  internal implementation boundaries.
+- Recommend compatible stable tags (`version = "^1"`) for lazy.nvim installs.
+- Document problem-driven maintenance, semantic versioning, verified platform
+  coverage, and the existing Markdown, Inline, and large-Reader limitations.
+- Refresh the publishing procedure and correct the stale v0.9.0 release status.
+
+There are no runtime behavior or default mapping changes from v0.9.0 and no
+configuration migration. Neovim 0.10+ remains the baseline. This release uses
+automated verification with the maintainer's explicit waiver of the terminal
+manual matrix; it does not claim terminal font/compositor verification.
+
 ## 0.9.0 - Reader Diff Coexistence
 
-Unreleased; release preparation.
+Released 2026-09-20.
 
 ### Fixed
 
