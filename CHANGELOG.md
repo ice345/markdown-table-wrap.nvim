@@ -2,6 +2,29 @@
 
 All notable changes to `markdown-table-wrap.nvim` are documented here.
 
+## 1.0.1 - Reader Document Close And View Isolation
+
+Release date: 2026-11-16
+
+### Fixed
+
+- Deleting a Reader with `:bdelete`, `:bwipeout`, or a buffer manager such as
+  LazyVim/Snacks `bufdelete` now closes the Markdown document instead of
+  rebuilding the Reader immediately. Window layout is kept, and a modified
+  Source is never discarded. Plugin-internal Reader deletion and `q` still
+  leave the Source open.
+- Automatic preview no longer replaces the buffer of floating windows, such as
+  an entered LSP hover with `filetype=markdown`, and no longer leaks that
+  popup's buffer.
+- Reader now refreshes when its hidden Source changes without `TextChanged`
+  (LSP workspace edits, other plugins, reloads), and its modified mirror
+  follows Source writes made elsewhere.
+- `q` (and other Reader leave keys) in one of several splits showing the same
+  Reader returns only that split to Source; the other splits keep Reader.
+  Window options are restored on the window that left Reader.
+- `:edit` in a Reader re-renders it instead of leaving an empty buffer, and no
+  longer lists the Reader buffer.
+
 ## 1.0.0 - Stable Source-Backed Workflow
 
 Release date: 2026-10-02.

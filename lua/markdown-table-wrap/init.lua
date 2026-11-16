@@ -1,6 +1,6 @@
 local M = {}
 
-M.version = "1.0.0"
+M.version = "1.0.1"
 
 local config_module = require("markdown-table-wrap.config")
 M.config = config_module.defaults()
@@ -725,6 +725,13 @@ local function refresh_auto(opts, resume_reader)
   if M.state.float_source_bufnr and M.state.win ~= nil and vim.api.nvim_win_is_valid(M.state.win) then
     return
   end
+
+  -- LSP hover and other plugin floats often use filetype=markdown. Automatic
+  -- preview must not replace their buffer or decorate it; explicit commands
+  -- (opts.force) still work.
+  if not opts.force and (vim.api.nvim_win_get_config(0).relative or "") ~= "" then
+    return
+  end
   local config = config_for_buffer(bufnr)
 
   if not config.auto_preview and not opts.force then
@@ -1378,6 +1385,15 @@ local function create_autocmds()
       elseif is_auto_preview_buffer(bufnr) then
         M.schedule_refresh({ bufnr = bufnr, winid = winid, silent = true })
       end
+    end,
+  })
+
+  -- BufModifiedSet covers a visible Source; BufWritePost also covers a hidden
+  -- Source written by :wall or an autosave plugin.
+  vim.api.nvim_create_autocmd({ "BufModifiedSet", "BufWritePost" }, {
+    group = M.state.augroup,
+    callback = function(args)
+      require("markdown-table-wrap.reader").sync_modified(args.buf)
     end,
   })
 

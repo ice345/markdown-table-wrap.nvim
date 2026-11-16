@@ -3,7 +3,7 @@
 Release from the existing `ice345/markdown-table-wrap.nvim` repository on
 `master`; remote `origin` is `git@github.com:ice345/markdown-table-wrap.nvim.git`.
 Do not reinitialize the repository, rename its branch, or move a published tag.
-The commands below prepare v1.0.0 from v0.9.0. For subsequent releases, select
+The commands below prepare v1.0.1 from v1.0.0. For subsequent releases, select
 the appropriate version and compare with the latest published tag first.
 Check GitHub for publication status rather than treating this tagged document
 as a live release ledger.
@@ -21,14 +21,13 @@ git branch --show-current
 git fetch origin --tags
 git status --short
 gh release list --limit 5
-git log --oneline v0.9.0..master
-git diff v0.9.0 --stat
+git log --oneline v1.0.0..master
+git diff v1.0.0 --stat
 ```
 
 Review committed and uncommitted changes, preserving unrelated edits. Align
 `M.version`, CHANGELOG, README, Vim help, and release notes. Use the actual
-publication date, not a stale preparation date. v1.0.0 declares the existing
-stable contract; it changes no runtime behavior or default mapping from 0.9.0.
+publication date, not a stale preparation date. v1.0.1 is a patch on the documented 1.x contract.
 Neovim 0.10+ remains the baseline. Keep known limitations explicit.
 
 ROADMAP.md, AGENTS.md, CODEX_HANDOFF.md, and RELEASE.local.md are ignored
@@ -97,14 +96,13 @@ and does not automatically apply to future releases.
 ## 4. Commit And Verify Exact-Commit CI
 
 Stage only reviewed public files, inspect `git diff --cached`, and commit.
-Suggested v1.0.0 message:
+Suggested v1.0.1 message:
 
-```text
-release: stabilize the public contract for v1.0.0
+```
+fix(reader): close Source on user Reader deletion
 
-Document 1.x API, configuration, mapping, event, and Source-model boundaries.
-Keep v0.9.0 runtime behavior and the Neovim 0.10+ baseline unchanged.
-Refresh release guidance, verification evidence, and maintenance policy.
+Treat :bdelete and buffer-manager deletes as closing the document.
+Skip floating markdown popups, refresh hidden Source changes, restore only the current split on q, and re-render :edit.
 ```
 
 Push normally to `origin/master`, then check:
@@ -125,7 +123,7 @@ git status --short
 git branch --show-current
 git rev-parse HEAD
 git rev-parse origin/master
-git ls-remote origin refs/tags/v1.0.0
+git ls-remote origin refs/tags/v1.0.1
 ```
 
 Require a clean reviewed `master`, equal commit IDs, and no existing local or
@@ -133,10 +131,10 @@ remote target tag. Once all gates pass (or an explicitly recorded manual waiver
 applies), create a new annotated tag:
 
 ```sh
-git tag -a v1.0.0 -m "markdown-table-wrap.nvim v1.0.0"
-git show --stat v1.0.0
-git push origin v1.0.0
-gh run list --branch v1.0.0 --limit 5
+git tag -a v1.0.1 -m "markdown-table-wrap.nvim v1.0.1"
+git show --stat v1.0.1
+git push origin v1.0.1
+gh run list --branch v1.0.1 --limit 5
 gh run watch <tag-run-id> --exit-status
 ```
 
@@ -145,8 +143,8 @@ A defect discovered after tagging needs a new appropriate version.
 
 ## 6. Verify Installation And Publish
 
-Install from a fresh plugin-manager cache with `version = "v1.0.0"`. Confirm
-its Git HEAD equals the reviewed commit and the Lua version is `1.0.0`.
+Install from a fresh plugin-manager cache with `version = "v1.0.1"`. Confirm
+its Git HEAD equals the reviewed commit and the Lua version is `1.0.1`.
 Run `:checkhealth markdown-table-wrap`; check a table-free document, a table,
 and one Reader/diff round trip. Do not substitute master for the tag.
 
@@ -154,16 +152,30 @@ Prepare `RELEASE.local.md` from CHANGELOG plus actual validation and limitations
 Review it, then publish from the existing remote tag:
 
 ```sh
-gh release create v1.0.0 --verify-tag \
-  --title "v1.0.0 — Stable Source-Backed Workflow" \
+gh release create v1.0.1 --verify-tag \
+  --title "v1.0.1 — Stable Source-Backed Workflow" \
   --notes-file RELEASE.local.md
-gh release view v1.0.0
+gh release view v1.0.1
 ```
 
 No binary assets are required. Verify the release is public, is not a draft or
 prerelease, and points to the reviewed tag. Refresh local handoff/roadmap state.
 Do not move the tag to add after-publication records; use a later docs commit
 if public corrections are needed.
+
+## v1.0.1 Local Verification Record
+
+macOS/Apple Silicon, 2026-11-16. Exact release-commit and tag CI are separate
+required gates above, recorded in GitHub Actions; these are local results:
+
+- 317 headless tests on Neovim 0.10.4 and 0.12.6.
+- 64 clean-Neovim real-input checks and 8 UI-grid cases on each runtime.
+- 65 personal LazyVim/Bufferline/Snacks real-input checks on 0.12.6.
+- StyLua, whitespace, help tag generation/loading, and documentation links.
+- Parser reference on 0.12.6: 10k prose 23.48 ms; 10k invalid pipe candidates 306.12 ms; 500 tables 27.94 ms; 1k semantic rows 56.97 ms. Same-host v1.0.0 is in the same band; timings are machine/runtime specific.
+- Large Reader: 4,002 Source lines / 20,005 rendered lines; cold open 2,335.16 ms, cached full refresh 314.16 ms. GC-paused allocation profile: 1,109.47 MiB transient growth and 93.14 MiB retained after collection. This is not normal peak resident memory; timings and allocation figures are machine-specific. Large cold Reader cost remains known.
+- The maintainer explicitly accepted automated validation instead of the real terminal manual matrix for this release. This exception does not waive future releases.
+- Native Windows and Linux compositor execution remain unverified.
 
 ## v1.0.0 Local Verification Record
 

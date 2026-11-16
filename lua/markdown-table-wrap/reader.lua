@@ -15,9 +15,22 @@ local saved_views = {}
 -- after :MarkdownTableDisableAutoPreview, q, or a repeated setup cancelled
 -- the handoff.
 local insert_handoffs = {}
+-- Reader buffers being deleted by this module. Any other unload of a Reader
+-- is a user/buffer-manager action and may close the backing document.
+local internal_deletes = {}
 
 local function notify_error(action, err)
   vim.notify("MarkdownTableWrap: " .. action .. ": " .. tostring(err), vim.log.levels.ERROR)
+end
+
+local function delete_view(bufnr)
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return true
+  end
+  internal_deletes[bufnr] = true
+  local ok, err = pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+  internal_deletes[bufnr] = nil
+  return ok, err
 end
 
 function M.cancel_insert_handoff(source_bufnr)
@@ -404,6 +417,42 @@ local function set_reader_keymaps(reader_bufnr)
   end
 end
 
+-- TextChanged only fires for the current buffer. While Source is hidden behind
+-- its Reader, LSP workspace edits, other plugins, and reloads change it
+-- silently, so dependent Readers observe Source lines directly. Refresh is
+-- debounced and remains changedtick-guarded, so edits already handled by the
+-- TextChanged path or a cell operation are no-ops here.
+local function schedule_source_refresh(source_bufnr, source_state)
+  source_state.change_token = (source_state.change_token or 0) + 1
+  local token = source_state.change_token
+  vim.defer_fn(function()
+    if source_states[source_bufnr] ~= source_state or source_state.change_token ~= token then
+      return
+    end
+    local ok, err = pcall(M.refresh_source, source_bufnr)
+    if not ok then
+      notify_error("could not refresh Reader after a Source change", err)
+    end
+  end, require("markdown-table-wrap").config.debounce_ms or 0)
+end
+
+local function watch_source(source_bufnr, source_state)
+  local function on_change()
+    -- Returning true detaches a watcher that outlived its Source ownership.
+    if source_states[source_bufnr] ~= source_state then
+      return true
+    end
+    schedule_source_refresh(source_bufnr, source_state)
+  end
+  local ok, err = pcall(vim.api.nvim_buf_attach, source_bufnr, false, {
+    on_lines = on_change,
+    on_reload = on_change,
+  })
+  if not ok then
+    notify_error("could not watch Source changes", err)
+  end
+end
+
 local function acquire_source(source_bufnr, reader_bufnr)
   local source_state = source_states[source_bufnr]
   if not source_state then
@@ -412,6 +461,7 @@ local function acquire_source(source_bufnr, reader_bufnr)
       readers = {},
     }
     source_states[source_bufnr] = source_state
+    watch_source(source_bufnr, source_state)
   end
 
   source_state.readers[reader_bufnr] = true
@@ -437,9 +487,9 @@ local function release_source(state, reader_bufnr)
   source_states[source_bufnr] = nil
 end
 
-local function restore_window(state)
-  local winid = state and state.winid
-  if not winid or not vim.api.nvim_win_is_valid(winid) then
+local function restore_window(state, winid)
+  winid = winid or (state and state.winid)
+  if not state or not winid or not vim.api.nvim_win_is_valid(winid) then
     return
   end
 
@@ -485,14 +535,103 @@ local function create_reader_buffer(source_bufnr)
         require("markdown-table-wrap.reader").cleanup(reader_bufnr)
       end,
     })
+    vim.api.nvim_create_autocmd("BufUnload", {
+      buffer = reader_bufnr,
+      callback = function()
+        require("markdown-table-wrap.reader").handle_view_unload(reader_bufnr, source_bufnr)
+      end,
+    })
   end)
   if not configured then
-    if vim.api.nvim_buf_is_valid(reader_bufnr) then
-      pcall(vim.api.nvim_buf_delete, reader_bufnr, { force = true })
-    end
+    delete_view(reader_bufnr)
     error(configure_error)
   end
   return reader_bufnr
+end
+
+local function replacement_buffer(winid, excluded)
+  local function usable(bufnr)
+    return bufnr
+      and bufnr > 0
+      and bufnr ~= excluded
+      and vim.api.nvim_buf_is_valid(bufnr)
+      and vim.fn.buflisted(bufnr) == 1
+      and not M.is_reader(bufnr)
+      and not vim.b[bufnr].markdown_table_wrap_auxiliary
+  end
+  local alternate = vim.api.nvim_win_call(winid, function()
+    return vim.fn.bufnr("#")
+  end)
+  if usable(alternate) then
+    return alternate
+  end
+  local candidates = vim.fn.getbufinfo({ buflisted = 1 })
+  table.sort(candidates, function(a, b)
+    return a.lastused > b.lastused
+  end)
+  for _, candidate in ipairs(candidates) do
+    if usable(candidate.bufnr) then
+      return candidate.bufnr
+    end
+  end
+  -- The new empty buffer is listed, so later windows reuse it.
+  return vim.api.nvim_create_buf(true, false)
+end
+
+-- Deleting the Reader is the user's request to close the document it stands
+-- for. Neovim's own modified check normally refuses through the Reader's
+-- modified mirror; a forced deletion still never discards unsaved Source.
+local function close_document(source_bufnr, changedtick)
+  if
+    not vim.api.nvim_buf_is_valid(source_bufnr)
+    or not vim.api.nvim_buf_is_loaded(source_bufnr)
+    or vim.api.nvim_buf_get_changedtick(source_bufnr) ~= changedtick
+  then
+    return false
+  end
+  require("markdown-table-wrap").pause_buffer(source_bufnr)
+  if vim.bo[source_bufnr].modified then
+    -- Keep this short enough to avoid a hit-enter prompt.
+    vim.notify("MarkdownTableWrap: Source has unsaved changes; kept open", vim.log.levels.WARN)
+    return false
+  end
+  -- Like buffer-manager deletion, keep the window layout instead of letting
+  -- :bdelete close every split that shows the Source.
+  for _, winid in ipairs(vim.fn.win_findbuf(source_bufnr)) do
+    pcall(vim.api.nvim_win_set_buf, winid, replacement_buffer(winid, source_bufnr))
+  end
+  local ok, err = pcall(vim.cmd, "bdelete " .. source_bufnr)
+  if not ok then
+    vim.notify("MarkdownTableWrap: could not close Source: " .. tostring(err), vim.log.levels.ERROR)
+  end
+  return ok
+end
+
+function M.handle_view_unload(reader_bufnr, source_bufnr)
+  if internal_deletes[reader_bufnr] or vim.v.exiting ~= vim.NIL then
+    return
+  end
+  -- A deletion the user started is issued from the Reader or from the Source
+  -- that a buffer manager has just put in its place. Elsewhere, another
+  -- plugin is cleaning up a buffer the user is not looking at.
+  local current = vim.api.nvim_get_current_buf()
+  if current ~= reader_bufnr and current ~= source_bufnr then
+    return
+  end
+  if not vim.api.nvim_buf_is_valid(source_bufnr) or not vim.api.nvim_buf_is_loaded(source_bufnr) then
+    return
+  end
+  local changedtick = vim.api.nvim_buf_get_changedtick(source_bufnr)
+  -- Scheduled before any debounced auto-preview timer callback; close_document
+  -- pauses Source first, so a queued refresh cannot rebuild Reader.
+  vim.schedule(function()
+    -- :edit reloads the Reader after BufUnload; only a completed unload or
+    -- wipe is a deletion.
+    if vim.api.nvim_buf_is_valid(reader_bufnr) and vim.api.nvim_buf_is_loaded(reader_bufnr) then
+      return
+    end
+    close_document(source_bufnr, changedtick)
+  end)
 end
 
 local function source_cursor_for(state, reader_lnum, reader_col)
@@ -888,9 +1027,7 @@ function M.open(source_bufnr, config)
     if reader_bufnr then
       states[reader_bufnr] = nil
       release_source(ownership, reader_bufnr)
-      if vim.api.nvim_buf_is_valid(reader_bufnr) then
-        pcall(vim.api.nvim_buf_delete, reader_bufnr, { force = true })
-      end
+      delete_view(reader_bufnr)
     end
     notify_error("could not prepare Reader", prepare_error)
     return nil
@@ -900,7 +1037,7 @@ function M.open(source_bufnr, config)
   if not switched then
     release_source(states[reader_bufnr], reader_bufnr)
     states[reader_bufnr] = nil
-    pcall(vim.api.nvim_buf_delete, reader_bufnr, { force = true })
+    delete_view(reader_bufnr)
     notify_error("could not open Reader", switch_err)
     return nil
   end
@@ -925,9 +1062,7 @@ function M.open(source_bufnr, config)
     restore_window(state)
     states[reader_bufnr] = nil
     release_source(state or ownership, reader_bufnr)
-    if vim.api.nvim_buf_is_valid(reader_bufnr) then
-      pcall(vim.api.nvim_buf_delete, reader_bufnr, { force = true })
-    end
+    delete_view(reader_bufnr)
     notify_error("could not finalize Reader", finalize_error)
     return nil
   end
@@ -952,9 +1087,15 @@ function M.close(reader_bufnr, opts)
     return nil
   end
 
+  local function shows_reader(candidate)
+    return candidate and vim.api.nvim_win_is_valid(candidate) and vim.api.nvim_win_get_buf(candidate) == reader_bufnr
+  end
+  -- A Reader split with :split is shown by several windows. Close the view
+  -- in the window the user acted from, not the window that first opened it.
   local winid = opts.winid
-  if not winid or not vim.api.nvim_win_is_valid(winid) or vim.api.nvim_win_get_buf(winid) ~= reader_bufnr then
-    winid = state.winid
+  if not shows_reader(winid) then
+    local current = vim.api.nvim_get_current_win()
+    winid = shows_reader(current) and current or state.winid
   end
   if not winid or not vim.api.nvim_win_is_valid(winid) or vim.api.nvim_win_get_buf(winid) ~= reader_bufnr then
     winid = vim.fn.win_findbuf(reader_bufnr)[1]
@@ -980,7 +1121,7 @@ function M.close(reader_bufnr, opts)
     return nil
   end
 
-  restore_window(state)
+  restore_window(state, winid)
   if not apply_source_view(state.source_bufnr, winid, snapshot) then
     vim.api.nvim_win_set_cursor(winid, { source_lnum, source_col })
   end
@@ -988,6 +1129,22 @@ function M.close(reader_bufnr, opts)
     save_view(state.source_bufnr, winid, snapshot)
   else
     clear_saved_view(state.source_bufnr, winid)
+  end
+
+  local remaining = vim.fn.win_findbuf(reader_bufnr)
+  if #remaining > 0 then
+    -- Other windows still show this Reader; deleting it would close them.
+    state.closing = false
+    state.winid = remaining[1]
+    vim.bo[reader_bufnr].modified = vim.bo[state.source_bufnr].modified
+    require("markdown-table-wrap.events").emit("MarkdownTableWrapViewChanged", {
+      mode = "source",
+      source_bufnr = state.source_bufnr,
+      view_bufnr = state.source_bufnr,
+      previous_view_bufnr = reader_bufnr,
+      winid = winid,
+    })
+    return state.source_bufnr
   end
 
   states[reader_bufnr] = nil
@@ -1001,8 +1158,9 @@ function M.close(reader_bufnr, opts)
   }
   require("markdown-table-wrap.events").emit("MarkdownTableWrapReaderLeave", event_data)
   require("markdown-table-wrap.events").emit("MarkdownTableWrapViewChanged", event_data)
-  if vim.api.nvim_buf_is_valid(reader_bufnr) then
-    vim.api.nvim_buf_delete(reader_bufnr, { force = true })
+  local deleted, delete_err = delete_view(reader_bufnr)
+  if not deleted then
+    error(delete_err, 0)
   end
   return state.source_bufnr
 end
@@ -1192,6 +1350,26 @@ function M.refresh_source(source_bufnr)
   return refreshed
 end
 
+-- Keep the Reader's modified mirror current when Source is written or changed
+-- elsewhere; native :bdelete and buffer managers check the Reader's flag.
+function M.sync_modified(source_bufnr)
+  source_bufnr = normalize_bufnr(source_bufnr)
+  local source_state = source_states[source_bufnr]
+  if not source_state or not vim.api.nvim_buf_is_valid(source_bufnr) then
+    return
+  end
+  local modified = vim.bo[source_bufnr].modified
+  for reader_bufnr in pairs(source_state.readers) do
+    if
+      states[reader_bufnr]
+      and vim.api.nvim_buf_is_valid(reader_bufnr)
+      and vim.bo[reader_bufnr].modified ~= modified
+    then
+      vim.bo[reader_bufnr].modified = modified
+    end
+  end
+end
+
 function M.refresh_windows(winids)
   local selected
   if type(winids) == "table" then
@@ -1270,9 +1448,7 @@ function M.abandon(reader_bufnr)
 
   if vim.api.nvim_buf_is_valid(reader_bufnr) then
     vim.schedule(function()
-      if vim.api.nvim_buf_is_valid(reader_bufnr) then
-        pcall(vim.api.nvim_buf_delete, reader_bufnr, { force = true })
-      end
+      delete_view(reader_bufnr)
     end)
   end
   return true
@@ -1334,7 +1510,7 @@ function M.cleanup(reader_bufnr)
               end
               set_win_buf_keepjumps(winid, replacement)
             end
-            pcall(vim.api.nvim_buf_delete, dependent_bufnr, { force = true })
+            delete_view(dependent_bufnr)
           end
         end)
       end

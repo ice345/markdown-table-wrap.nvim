@@ -298,7 +298,27 @@ Source paused ──explicit preview/enable──► rendered view, pause cleare
 ```
 
 Native Reader `BufHidden` cleanup calls `reader.abandon()` and deletes only the
-disposable view. It must not set the Source pause flag. When the Source next
+disposable view. It must not set the Source pause flag.
+
+Reader buffer deletion has two classes. Every deletion performed by
+`reader.lua` (close, abandon, failed open stages, dependent cleanup) goes
+through one internal helper that marks the buffer first. Any other unload of
+a Reader buffer, issued while the Reader or its Source is current, is a user
+or buffer-manager deletion (`:bdelete`, Snacks `bufdelete`) and means "close
+this document": after a scheduled check confirms the Reader really stayed
+unloaded (`:edit` reloads it instead), Source is paused, every window showing
+it gets a replacement buffer, and Source receives a non-forced `:bdelete`. A
+modified Source or a Source whose changedtick moved meanwhile is kept. `q`
+and the other leave keys remain view-only. Leaving a Reader that other
+windows still display switches only the acting window and keeps the shared
+Reader state.
+
+While a Source has dependent Readers, `reader.lua` observes it with
+`nvim_buf_attach()` because `TextChanged` fires only for the current buffer.
+`on_lines`/`on_reload` schedule a debounced, changedtick-guarded
+`refresh_source()`; the watcher detaches itself once its ownership record is
+released. `BufModifiedSet` and `BufWritePost` keep the Reader's modified
+mirror aligned with Source. When the Source next
 enters the same window, its changedtick-guarded Source/Reader viewport mapping
 is restored before the normal debounced auto-preview policy runs again. Any
 Source cursor, horizontal, vertical-scroll, or text change invalidates that
@@ -339,7 +359,8 @@ needed. Derived signatures/config copies and transient visual state are always
 invalidated.
 
 Relevant content, entry, and resize lifecycle events are debounced per Source
-buffer. Plain `WinScrolled` movement does not rebuild a view because neither
+buffer. Automatic refresh never acts in a floating window; plugin popups such
+as LSP hover may use `filetype=markdown` but own their buffer. Plain `WinScrolled` movement does not rebuild a view because neither
 Source text nor layout width changed. Each scheduled refresh captures the
 Source's token and the global setup epoch; stale callbacks
 exit without touching state, and unexpected callback failures are reported

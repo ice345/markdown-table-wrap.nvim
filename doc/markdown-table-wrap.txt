@@ -87,6 +87,17 @@ Default interaction:
   Reader buffer is never written to disk; :wq then quits as usual.
 - |:MarkdownTableToggleReader| switches between Reader and Source.
 - |:MarkdownTableEditSource| leaves Reader and pauses automatic reopening.
+- q and the other leave keys act on the current window. When :split shows
+  the same Reader in several windows, the other windows keep Reader.
+- Deleting the Reader with :bdelete, :bwipeout, or a buffer-manager action
+  (for example LazyVim/Snacks bufdelete) closes the Markdown document: its
+  Source is deleted and windows keep their layout. A modified Source is never
+  discarded, even when the Reader was force-deleted; it stays open, paused in
+  Source, with a warning. Deletion by the plugin itself (q, view changes,
+  native navigation, cleanup) never deletes Source. :edit in Reader
+  re-renders it.
+- Reader follows Source changes made while Source is hidden, such as LSP
+  workspace edits, other plugins, or a reload from disk.
 - gx in Reader opens the original target under a rendered link. Away from a
   target it delegates to the Source mapping captured when Reader opened, or to
   native gx when available. Source-buffer gx is left untouched by default;
@@ -685,7 +696,9 @@ clear_on_insert~
 
 auto_preview~
     Automatically render supported buffers. In Reader mode, automatic opening
-    also follows reader.auto_open.
+    also follows reader.auto_open. Floating windows are skipped, so LSP hover
+    and other plugin popups with filetype=markdown keep their own buffer;
+    explicit preview commands still work there.
 
 render_all~
     Render all tables in the current Markdown buffer.

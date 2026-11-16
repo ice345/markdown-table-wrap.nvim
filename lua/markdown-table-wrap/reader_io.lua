@@ -180,6 +180,15 @@ function M.install(group)
     pattern = prefix .. "*",
     nested = true,
     callback = function(args)
+      local reader = require("markdown-table-wrap.reader")
+      if reader.source_changedtick(args.buf) then
+        -- :edit in a live Reader unloads and re-reads it; rebuild the
+        -- projection instead of leaving an empty buffer. :edit also lists
+        -- the buffer, but a Reader must never become a duplicate document.
+        reader.refresh(args.buf)
+        vim.bo[args.buf].buflisted = false
+        return
+      end
       restore(args.buf)
     end,
   })

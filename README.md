@@ -121,7 +121,12 @@ The plugin exposes three rendered views:
 
 In Reader:
 
-- `q` returns to Source and pauses automatic reopening for that buffer.
+- `q` returns to Source and pauses automatic reopening for that buffer. With the
+  same Reader in several splits, only the current split returns to Source.
+- `:bdelete`, `:bwipeout`, or a buffer-manager delete (such as LazyVim/Snacks
+  `bufdelete`) on the Reader closes the Markdown document itself, keeping the
+  window layout. A Source with unsaved changes is never discarded: it stays
+  open in Source with a warning. `:edit` in Reader re-renders it.
 - `e`, `i`, `a`, `I`, `A`, `o`, and `O` return to the mapped Source position for
   editing. Insert keys reopen Reader after `InsertLeave` when auto-preview is
   enabled and no newer explicit pause/disable has cancelled the handoff.
@@ -132,6 +137,12 @@ In Reader:
   `:saveas` are Source-aware too; see Vim help for session and shell-filter limits.
 - Native `v`, `V`, and `<C-v>` select real rendered text. Follow with `y` to
   copy the visible Unicode table.
+- Reader follows Source changes made while Source is hidden, for example LSP
+  workspace edits, other plugins, or a reload from disk.
+
+Automatic preview never takes over floating windows, so LSP hover and other
+plugin popups with `filetype=markdown` keep their own buffer. Explicit preview
+commands still work there.
 
 Diff uses the original Source buffer. Entering diff temporarily suspends Reader
 in that window; leaving diff restores it, including manually opened Readers and

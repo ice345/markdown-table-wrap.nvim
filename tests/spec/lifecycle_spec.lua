@@ -1358,3 +1358,259 @@ h.test("refused deletion and Source rename preserve Reader ownership and unsaved
   plugin.close_reader()
   delete_buffer(source)
 end)
+
+local function open_named_source(lines)
+  local path = vim.fn.tempname() .. ".md"
+  vim.fn.writefile(lines, path)
+  vim.cmd("edit " .. vim.fn.fnameescape(path))
+  local source = vim.api.nvim_get_current_buf()
+  vim.bo[source].filetype = "markdown"
+  return source, path
+end
+
+local function listed_scratch(text)
+  local buf = vim.api.nvim_create_buf(true, false)
+  vim.bo[buf].swapfile = false
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { text })
+  vim.bo[buf].modified = false
+  return buf
+end
+
+h.test("user deletion of the current Reader closes its unmodified Source and keeps the window", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  for _, label in ipairs({ ":bdelete", "buffer manager" }) do
+    plugin.setup({ auto_preview = true, preview_mode = "reader", debounce_ms = 0 })
+    local other = listed_scratch(label .. " other")
+    vim.api.nvim_set_current_buf(other)
+    local source, path = open_named_source(table_lines)
+    local win = vim.api.nvim_get_current_win()
+    local view = plugin.reader_preview()
+    h.assert_true(label .. " Reader opened", reader.is_reader(view))
+
+    if label == ":bdelete" then
+      vim.cmd("bdelete")
+    else
+      -- Snacks/LazyVim bufdelete: show another buffer, then force-delete.
+      vim.api.nvim_win_set_buf(win, source)
+      vim.cmd("bdelete! " .. view)
+    end
+    vim.wait(200, function()
+      return not vim.api.nvim_buf_is_loaded(source)
+    end, 5)
+
+    h.assert_false(label .. " unloads Source", vim.api.nvim_buf_is_loaded(source))
+    h.assert_eq(label .. " unlists Source", vim.fn.buflisted(source), 0)
+    h.assert_true(label .. " keeps the window", vim.api.nvim_win_is_valid(win))
+    local shown = vim.api.nvim_win_get_buf(win)
+    h.assert_true(label .. " shows another listed buffer", shown ~= source and vim.fn.buflisted(shown) == 1)
+    h.assert_false(label .. " does not rebuild Reader", reader.is_reader(vim.api.nvim_win_get_buf(win)))
+    delete_buffer(source)
+    delete_buffer(other)
+    vim.fn.delete(path)
+  end
+end)
+
+h.test("user deletion of a Reader refuses to discard a modified Source", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  plugin.setup({ auto_preview = true, preview_mode = "reader", debounce_ms = 0 })
+  local other = listed_scratch("other")
+  vim.api.nvim_set_current_buf(other)
+  local source, path = open_named_source(table_lines)
+  vim.api.nvim_buf_set_lines(source, 2, 3, false, { "| unsaved | change |" })
+  local expected = vim.api.nvim_buf_get_lines(source, 0, -1, false)
+  local win = vim.api.nvim_get_current_win()
+  local view = plugin.reader_preview()
+
+  local plain_ok = pcall(vim.cmd, "bdelete")
+  h.assert_false("native :bdelete refuses through the modified mirror", plain_ok)
+  h.assert_true("refused :bdelete keeps Reader", reader.is_reader(view))
+
+  vim.api.nvim_win_set_buf(win, source)
+  vim.cmd("bdelete! " .. view)
+  vim.wait(100, function()
+    return not vim.api.nvim_buf_is_valid(view)
+  end, 5)
+  vim.wait(50)
+
+  h.assert_true("modified Source stays loaded", vim.api.nvim_buf_is_loaded(source))
+  h.assert_eq("modified Source stays listed", vim.fn.buflisted(source), 1)
+  h.assert_true("modified flag is kept", vim.bo[source].modified)
+  h.assert_deep_eq("unsaved bytes are kept", vim.api.nvim_buf_get_lines(source, 0, -1, false), expected)
+  h.assert_eq("Source remains visible", vim.api.nvim_win_get_buf(win), source)
+  h.assert_true("explicit close pauses Source", plugin.state.paused_buffers[source])
+  delete_buffer(source)
+  delete_buffer(other)
+  vim.fn.delete(path)
+end)
+
+h.test("plugin-internal and unrelated Reader deletion never closes the Source", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  plugin.setup({ auto_preview = false, preview_mode = "reader", debounce_ms = 0 })
+  local other = listed_scratch("other")
+  vim.api.nvim_set_current_buf(other)
+  local source, path = open_named_source(table_lines)
+  local win = vim.api.nvim_get_current_win()
+
+  local function assert_source_alive(label)
+    vim.wait(50)
+    h.assert_true(label .. " keeps Source loaded", vim.api.nvim_buf_is_loaded(source))
+    h.assert_eq(label .. " keeps Source listed", vim.fn.buflisted(source), 1)
+  end
+
+  local view = plugin.reader_preview()
+  plugin.close_reader()
+  h.assert_false("q deletes the Reader", vim.api.nvim_buf_is_valid(view))
+  assert_source_alive("q")
+
+  plugin.state.paused_buffers[source] = nil
+  view = plugin.reader_preview()
+  reader.refresh(view)
+  plugin.setup({ auto_preview = false, preview_mode = "reader", debounce_ms = 0 })
+  assert_source_alive("refresh and setup")
+  vim.cmd("buffer " .. other)
+  vim.wait(100, function()
+    return not vim.api.nvim_buf_is_valid(view)
+  end, 5)
+  h.assert_false("native navigation disposes Reader", vim.api.nvim_buf_is_valid(view))
+  assert_source_alive("native navigation")
+
+  vim.api.nvim_win_set_buf(win, source)
+  view = plugin.reader_preview()
+  vim.cmd("vsplit")
+  local unrelated = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_buf(unrelated, other)
+  vim.api.nvim_buf_delete(view, { force = true })
+  assert_source_alive("deletion from an unrelated buffer")
+
+  if vim.api.nvim_win_is_valid(unrelated) and #vim.api.nvim_list_wins() > 1 then
+    vim.api.nvim_win_close(unrelated, true)
+  end
+  delete_buffer(source)
+  delete_buffer(other)
+  vim.fn.delete(path)
+end)
+
+h.test(":edit in a Reader re-renders it without closing the Source", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  plugin.setup({ auto_preview = false, preview_mode = "reader", debounce_ms = 0 })
+  local source, path = open_named_source(table_lines)
+  local view = plugin.reader_preview()
+  local rendered = vim.api.nvim_buf_get_lines(view, 0, -1, false)
+  vim.cmd("edit")
+  vim.wait(50)
+  h.assert_true(":edit keeps Source loaded", vim.api.nvim_buf_is_loaded(source))
+  h.assert_eq(":edit keeps Source listed", vim.fn.buflisted(source), 1)
+  h.assert_true(":edit keeps Reader", reader.is_reader(view))
+  h.assert_eq(":edit keeps Reader unlisted", vim.fn.buflisted(view), 0)
+  h.assert_deep_eq(":edit restores rendered lines", vim.api.nvim_buf_get_lines(view, 0, -1, false), rendered)
+  h.assert_eq(
+    ":edit restores the table overlay",
+    #vim.api.nvim_buf_get_extmarks(view, reader.namespace(), 0, -1, {}),
+    #rendered
+  )
+  plugin.close_reader()
+  delete_buffer(source)
+  vim.fn.delete(path)
+end)
+
+h.test("background Source changes refresh a visible Reader and its modified mirror", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  plugin.setup({ auto_preview = false, preview_mode = "reader", debounce_ms = 0 })
+  -- A real (not nofile) buffer, so edits set 'modified'.
+  local source = listed_scratch("")
+  local path = vim.fn.tempname() .. ".md"
+  vim.api.nvim_buf_set_name(source, path)
+  vim.api.nvim_buf_set_lines(source, 0, -1, false, table_lines)
+  vim.bo[source].filetype = "markdown"
+  vim.bo[source].modified = false
+  vim.api.nvim_set_current_buf(source)
+  do
+    local view = plugin.reader_preview()
+    -- An LSP workspace edit or AI tool changes Source while Reader is current;
+    -- no TextChanged is fired for a non-current buffer.
+    vim.api.nvim_buf_set_lines(source, 2, 3, false, { "| background | edit |" })
+    vim.wait(200, function()
+      return table.concat(vim.api.nvim_buf_get_lines(view, 0, -1, false), "\n"):find("background", 1, true) ~= nil
+    end, 5)
+    h.assert_true(
+      "Reader shows the background edit",
+      table.concat(vim.api.nvim_buf_get_lines(view, 0, -1, false), "\n"):find("background", 1, true) ~= nil
+    )
+    h.assert_eq(
+      "Reader records the current Source changedtick",
+      reader.source_changedtick(view),
+      vim.api.nvim_buf_get_changedtick(source)
+    )
+    h.assert_true("Reader mirrors modified Source", vim.bo[view].modified)
+    -- :wall or an autosave plugin writes the hidden Source.
+    vim.api.nvim_buf_call(source, function()
+      vim.cmd("silent write")
+    end)
+    vim.wait(50, function()
+      return not vim.bo[view].modified
+    end, 5)
+    h.assert_false("Reader mirrors a Source saved elsewhere", vim.bo[view].modified)
+    plugin.close_reader()
+  end
+  delete_buffer(source)
+  vim.fn.delete(path)
+end)
+
+h.test("automatic preview never takes over floating windows owned by other plugins", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  local inline = require("markdown-table-wrap.inline")
+  for _, mode in ipairs({ "reader", "inline" }) do
+    plugin.setup({ auto_preview = true, preview_mode = mode, debounce_ms = 0 })
+    local main = vim.api.nvim_get_current_win()
+    local buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "Docs", "", table_lines[1], table_lines[2], table_lines[3] })
+    vim.bo[buf].bufhidden = "wipe"
+    vim.bo[buf].filetype = "markdown"
+    local float = vim.api.nvim_open_win(buf, true, { relative = "editor", row = 1, col = 1, width = 40, height = 8 })
+    plugin.refresh_auto({ bufnr = buf })
+    plugin.schedule_refresh({ bufnr = buf, winid = float })
+    vim.wait(50)
+    h.assert_eq(mode .. " float keeps its buffer", vim.api.nvim_win_get_buf(float), buf)
+    h.assert_false(mode .. " float is not a Reader", reader.is_reader(vim.api.nvim_win_get_buf(float)))
+    h.assert_false(mode .. " float has no Inline overlay", inline.is_active(buf))
+    h.assert_eq(mode .. " float buffer policy is untouched", vim.bo[buf].bufhidden, "wipe")
+    vim.api.nvim_win_close(float, true)
+    vim.api.nvim_set_current_win(main)
+    h.assert_false(mode .. " float buffer is wiped with its window", vim.api.nvim_buf_is_valid(buf))
+  end
+end)
+
+h.test("closing a Reader in one split leaves the other split's Reader intact", function()
+  local plugin = require("markdown-table-wrap")
+  local reader = require("markdown-table-wrap.reader")
+  plugin.setup({ auto_preview = false, preview_mode = "reader", debounce_ms = 0 })
+  h.with_buffer(table_lines, function(source)
+    vim.bo[source].filetype = "markdown"
+    local first = vim.api.nvim_get_current_win()
+    vim.wo[first].conceallevel = 0
+    local view = plugin.reader_preview()
+    vim.cmd("split")
+    local second = vim.api.nvim_get_current_win()
+    h.assert_eq("split shows the same Reader", vim.api.nvim_win_get_buf(second), view)
+
+    h.assert_true("q succeeds in the split", plugin.close_reader())
+    h.assert_eq("q stays in the split", vim.api.nvim_get_current_win(), second)
+    h.assert_eq("split returns to Source", vim.api.nvim_win_get_buf(second), source)
+    h.assert_eq("split window options are restored", vim.wo[second].conceallevel, 0)
+    h.assert_true("other split survives", vim.api.nvim_win_is_valid(first))
+    h.assert_eq("other split keeps Reader", vim.api.nvim_win_get_buf(first), view)
+    h.assert_true("Reader state survives", reader.is_reader(view))
+
+    vim.api.nvim_set_current_win(first)
+    h.assert_true("last Reader window closes", plugin.close_reader())
+    h.assert_eq("last window returns to Source", vim.api.nvim_win_get_buf(first), source)
+    h.assert_false("last close deletes the Reader", vim.api.nvim_buf_is_valid(view))
+    vim.api.nvim_win_close(second, true)
+  end)
+end)
